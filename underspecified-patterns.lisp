@@ -47,7 +47,7 @@
   
   Within the scope of the macro, the variable *semtypes* is modified so any
   function that directly interacts with this will be affected. Afterward, the
-  prior *semtypes* steate will be reinstated so any changes to the variable
+  prior *semtypes* state will be reinstated so any changes to the variable
   within this scope will be lost.
   
   This macro is thread-safe."
