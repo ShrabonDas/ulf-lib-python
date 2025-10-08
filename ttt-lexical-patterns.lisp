@@ -22,6 +22,11 @@
     ("PERF" . "((D=>(S=>2))_v%!t,!pf,!x>>(D=>(S=>2))_v%!t,pf)")
     ("{S}\\.AUX-S|{S}\\.AUX-V" . "((D=>(S=>2))_v%!t,!x>>(D=>(S=>2))_v%!t,x)")))
 
+;;; This parameter forms the basis for all the compositional semantic analysis
+;;; in the package. Modify this variable at your own risk. I would encourage
+;;; using thread-protected and temporary modifications to this variable in
+;;; well-defined scopes. underspecified-patterns.lisp shows an example of this
+;;; sort of modification to the variable.
 (defparameter *semtypes*
   (append
     (mapcar
@@ -82,9 +87,13 @@
           ("MOD-N" . "((D=>(S=>2))=>((D=>(S=>2))_n>>(D=>(S=>2))_n))")
           ("{S}\\.P-ARG" . "PARG%lex")
           ("\\!|\\?" . "((S=>2)_v>>(S=>2))%lex")
-          ;; Only transitive or >arity verbs can be passivized.
-          ;; TODO: instead of 2, this should be n-1, which we don't yet support.
-          ("PASV" . "(({D|(D=>(S=>2))%!t,!pf,!pg,!pv,!x}^2=>(D=>(D=>(S=>2))))_V%!pv,!t,lex%>pv,lex)"))
+          ;; Vocative macro has an easy type interpretation.
+          ("VOC|VOC-O" . "(D=>((S=>2)_v>>(S=>2)))")
+          ;; TODO: Only binary or > arity verbs can be passivized.
+          ;;       But the resulting predicate *can* take one less argument.
+          ;;       This is because passivized arguments take the original
+          ;;       subject with an optional argument marked by by.p-arg.
+          ("PASV" . "(({D|(D=>(S=>2))%!t,!pf,!pg,!pv,!x}^n=>(D=>(S=>2)))_V%!pv,!t,lex%>pv,lex)"))
 
         *auxiliaries-and-aspectual-operator-semtype-strs*))
       ;; AUX    == ((D=>(S=>2))_V%!T,!X>>(D=>(S=>2))_V%!T,X)
@@ -117,7 +126,7 @@
                     ;;   (((past do.aux-s) you.pro (know.v {ref}.pro)) ?)
                     ;;
                     ;; Inverted type:
-                    ;;   (D=>(ANT>>(S=>2)%T))
+                    ;;   (D=>(ANT>>(S=>2)%T,X))
                     ;;   where ANT is the antecedent of the original
                     ;;   auxiliary. Basically the subject argument
                     ;;   was moved out before the verb.
@@ -129,7 +138,7 @@
                                     (new-semtype
                                       (str2semtype "D")
                                       (new-semtype (copy-semtype (domain orig-asp))
-                                                   (str2semtype "(S=>2)_v%T")
+                                                   (str2semtype "(S=>2)_v%T,X")
                                                    1 nil
                                                    :conn '>>)
                                       1 nil)
@@ -233,13 +242,21 @@
 
 ; Auxiliaries.
 (defun lex-aux-s? (x)
-  (in-package-suffix-check x "AUX-S"))
+  (or (in-package-suffix-check x "AUX-S")
+      (when *support-lenulf-ambiguities*
+        (lex-lenulf-ambiguous-aux? x))))
 (defun lex-aux-v? (x)
-  (in-package-suffix-check x "AUX-V"))
+  (or (in-package-suffix-check x "AUX-V")
+      (when *support-lenulf-ambiguities*
+        (lex-lenulf-ambiguous-aux? x))))
+(defun lex-lenulf-ambiguous-aux? (x)
+  (in-package-suffix-check x "AUX"))
 (defun lex-aux? (x)
   (or
     (lex-aux-s? x)
-    (lex-aux-v? x)))
+    (lex-aux-v? x)
+    (when *support-lenulf-ambiguities*
+      (lex-lenulf-ambiguous-aux? x))))
 
 (defun lex-number? (x)
   (numberp x))
@@ -286,7 +303,7 @@
   (in-intern (x s *package*)
     (let* ((sstr (if (not (stringp s)) (atom2str s) s))
            (chars (coerce sstr 'list)))
-      (and (not (equal "|'S|" sstr))
+      (and (not (member sstr '("|'S|" "|\"|") :test #'equal))
            (> (length chars) 1)
            (eql #\| (nth 0 chars))
            (eql #\| (nth (1- (length chars)) chars))))))
@@ -308,14 +325,24 @@
 
 ; Adverbs
 (defun lex-adv-a? (x)
-  (in-package-suffix-check x "ADV-A"))
+  (or (in-package-suffix-check x "ADV-A")
+      (when *support-lenulf-ambiguities*
+        (lex-lenulf-ambiguous-adv? x))))
 (defun lex-adv-s? (x)
   (or (in-package-suffix-check x "ADV-S")
-      (in-ulf-lib (x y) (eql y 'not))))
+      (in-ulf-lib (x y) (eql y 'not))
+      (when *support-lenulf-ambiguities*
+        (lex-lenulf-ambiguous-adv? x))))
 (defun lex-adv-e? (x)
-  (in-package-suffix-check x "ADV-E"))
+  (or (in-package-suffix-check x "ADV-E")
+      (when *support-lenulf-ambiguities*
+        (lex-lenulf-ambiguous-adv? x))))
 (defun lex-adv-f? (x)
-  (in-package-suffix-check x "ADV-F"))
+  (or (in-package-suffix-check x "ADV-F")
+      (when *support-lenulf-ambiguities*
+        (lex-lenulf-ambiguous-adv? x))))
+(defun lex-lenulf-ambiguous-adv? (x)
+  (in-package-suffix-check x "ADV"))
 (defun lex-adv-formula? (x)
   (or
     (lex-adv-s? x)
@@ -326,7 +353,9 @@
     (lex-adv-a? x)
     (lex-adv-s? x)
     (lex-adv-e? x)
-    (lex-adv-f? x)))
+    (lex-adv-f? x)
+    (when *support-lenulf-ambiguities*
+      (lex-lenulf-ambiguous-adv? x))))
 
 ;; Expletives.
 (defun lex-x? (x)
@@ -346,7 +375,11 @@
 
 (defun lex-tense? (x)
   (declare (optimize (speed 1)))
-  (in-ulf-lib (x y) (member y *tense*)))
+  (in-ulf-lib (x y)
+    (let ((tenses (if *support-lenulf-ambiguities*
+                      (cons 'fin *tense*)
+                      *tense*)))
+      (member y tenses))))
 
 (defun lex-detformer? (x)
   (declare (optimize (speed 1)))

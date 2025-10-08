@@ -132,6 +132,10 @@
     :plur-partitive?
     :plur-lex-noun?
     :pasv-lex-verb?
+    :tensed-lex-verbaux?
+
+    ;; underspecified-patterns.lisp
+    :with-underspecified-types
 
     ;; search.lisp
     :search-vp-head
@@ -182,8 +186,24 @@
     :unknown
     :types
 
+    ;; composition.lisp
+    :flatten-options
+    :optional-type-p
+    :flatten-options
+    :ulf-type?
+
     ;; lang-util
     term2possdet
     pronoun2possdet
     ))
+
+(in-package :ulf-lib)
+
+;; Whether to recognize ambiguous categories from lenulf.
+;; AUX - ambiguous auxiliary
+;; FIN - ambiguous tense
+;; ADV - ambiguous adverb
+;; NB: This is only for the top-down type predicates. This is not supported in
+;; the semtype functionality.
+(defparameter *support-lenulf-ambiguities* nil)
 
