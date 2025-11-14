@@ -1,0 +1,17 @@
+#!/usr/bin/expect -f
+
+spawn sbcl --load quicklisp.lisp
+expect "CL-USER>"
+send "(quicklisp-quickstart:install)\r"
+expect "CL-USER>"
+send "(ql:system-apropos \"vecto\")\r"
+expect "CL-USER>"
+send "(ql:quickload \"vecto\")\r"
+expect "CL-USER>"
+send "(ql:add-to-init-file)\r"
+expect "Press Enter to continue."
+send "\r"
+expect "CL-USER>"
+send "(quit)\r"
+expect eof
+
