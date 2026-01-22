@@ -17,9 +17,4 @@ WORKDIR /root/quicklisp/local-projects/
 # RUN git clone https://github.com/genelkim/ttt.git
 # RUN git clone https://github.com/genelkim/gute.git
 
-# WORKDIR /root/quicklisp/local-projects/ulf2penman
-# COPY requirements.txt .
-# RUN pip install -r requirements.txt
-# RUN rm -rf requirements.txt
-
 CMD ["bash"]
