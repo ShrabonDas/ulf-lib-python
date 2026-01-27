@@ -1,3 +1,42 @@
+## Local Python setup (uv)
+
+This repository uses **uv** to manage a reproducible local Python environment.
+
+### Prerequisites
+
+- Python **3.12+**
+- `uv` installed
+
+### 1) Create the virtual environment
+
+From the project root:
+
+```bash
+uv venv --python 3.12
+```
+
+This creates a `.venv/` directory using Python 3.12.
+
+---
+
+### 2) Install dependencies
+
+```bash
+uv sync
+```
+
+This installs **exact dependency versions** from `uv.lock` ensuring same environment.
+
+---
+
+### 3) Activate the environment
+
+```bash
+source .venv/bin/activate
+```
+
+---
+
 ## Docker setup for legacy codebase using Quicklisp
 
 This project provides a Docker environment that launches an interactive container with Quicklisp configured and mounts three local repositories into the container for testing.
