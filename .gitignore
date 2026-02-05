@@ -13,3 +13,7 @@ repos
 forked_repo*
 .vscode
 testcases
+
+# Temporary files used for testing
+semtype_maps.json
+ulf_maps.json
