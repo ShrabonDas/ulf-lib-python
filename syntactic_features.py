@@ -11,6 +11,7 @@ def lookup_feature_name(feat_value: Any) -> str | None:
     return SYNTACTIC_FEATURE_VALUES.get(feat_value)
 
 # TODO: apply __norm_name wherever needed
+# TODO: we can go with lowercase too
 def _norm_name(name: str) -> str:
     return name.upper()
 
@@ -60,6 +61,9 @@ class SyntacticFeatures:
     def equal(self, other: "SyntacticFeatures") -> bool:
         return self.feature_map == other.feature_map
     
+    # TODO: rewrite the logic here 
+    # first, check if instance_val is None, set it to default
+    # second, 
     def match(self, pattern: "SyntacticFeatures") -> bool:
         instance = self
         for feat_name, pattern_val in pattern.feature_map.items():
@@ -108,6 +112,7 @@ class SyntacticFeatures:
     ) -> "SyntacticFeatures":
         # TODO: normalize names here probably
         feat_names = set(base.get_feature_names()) | set(opr_feats.get_feature_names()) | set(arg_feats.get_feature_names())
+        feat_names = set(map(_norm_name, feat_names))
         
         new_feat_vals: list[tuple[str, Any | None]] = []
         for feat_name in feat_names:
@@ -145,7 +150,7 @@ class SyntacticFeatures:
         result = one_feats.copy()
         for k, v in two_feats.feature_map.items():
             kk = _norm_name(k)
-            if kk not in result.feature_map:
+            if kk not in result.feature_map or result.feature_map[kk] is None:
                 result.feature_map[kk] = v
         return result
     

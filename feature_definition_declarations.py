@@ -7,6 +7,7 @@ from collections.abc import Callable
 # (base_value, operator_value, argument_value, consequent_value, opr_semtype, arg_semtype) -> result_value
 CombinatorFn = Callable[[Any, Any, Any, Any, Any | None, Any | None], Any]
 
+# TODO: get_combinator make is a member function of the following class
 def default_combinator_fn(
     base: Any,
     opr: Any,
