@@ -1,5 +1,46 @@
 from dataclasses import dataclass, field
 from typing import Any, Iterable
+from lisp_keys import key_list # TODO: remove this
+
+import json
+
+
+with open("ulf_maps.json") as file:
+    ULF_MAPS: dict[str, dict[str, Any]] | None = json.load(file)
+
+
+def _sf_to_kvpairs(sf: "SyntacticFeatures") -> list[list[str]] | None:
+    if not sf.feature_map:
+        return None
+    
+    items = []
+    for k in sorted(sf.feature_map.keys()):
+        v = sf.feature_map[k]
+        if v is None:
+            continue
+        items.append([k.upper(), str(v)])
+
+    return items or None
+
+
+def combine_features_oracle_key(
+    base: "SyntacticFeatures",
+    opr_feats: "SyntacticFeatures",
+    arg_feats: "SyntacticFeatures",
+    csq_feats: "SyntacticFeatures",
+    opr_semtype: Any | None,
+    arg_semtype: Any | None,
+) -> str:
+    return key_list([
+        _sf_to_kvpairs(base),
+        _sf_to_kvpairs(opr_feats),
+        _sf_to_kvpairs(arg_feats),
+        _sf_to_kvpairs(csq_feats),
+        getattr(opr_semtype, "wire", None),
+        getattr(arg_semtype, "wire", None),
+    ])
+
+
 
 from feature_definition_declarations import (
     SYNTACTIC_FEATURE_VALUES,
@@ -56,7 +97,7 @@ class SyntacticFeatures:
     
     # TODO: can we name element to name instead?
     def feature_value(self, element: str) -> Any | None:
-        return self.feature_map.get(element)
+        return self.feature_map.get(_norm_name(element))
     
     def equal(self, other: "SyntacticFeatures") -> bool:
         return self.feature_map == other.feature_map
