@@ -24,10 +24,10 @@ def default_combinator_fn(
 
 @dataclass(frozen=True, slots=True)
 class FeatureDefinition:
-    name: str
-    possible_values: tuple[Any, ...]
-    default_value: Any
-    combinator_fn: CombinatorFn | None = None
+    name: str                                   # e.g. "TENSE"
+    possible_values: tuple[Any, ...]            # e.g. ("t", "!t")
+    default_value: Any                          # e.g. "!t"
+    combinator_fn: CombinatorFn | None = None   # how to combine during composition
     
     def __post_init__(self) -> None:
         if not self.name:
@@ -49,9 +49,10 @@ class FeatureDefinition:
 # These are populated elsewhere
 # ------------------------
 
-FEATURE_DEFINITIONS_DICT: dict[str, FeatureDefinition] = {}
+FEATURE_DEFINITIONS_DICT: dict[str, FeatureDefinition] = {}     # "TENSE" -> FeatureDefinition(...)
 
-SYNTACTIC_FEATURE_VALUES: dict[Any, str] = {}
+# Given a feature value like "t", this map tells us what feature name it belongs to
+SYNTACTIC_FEATURE_VALUES: dict[Any, str] = {}                   # "t" -> "Tense", "!t" -> "TENSE"
 
 def get_combinator(defn: FeatureDefinition) -> CombinatorFn:
     return defn.combinator_fn or default_combinator_fn
