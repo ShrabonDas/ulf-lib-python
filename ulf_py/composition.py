@@ -1,4 +1,4 @@
-from .semtype import SemType, ULF_MAPS, semtype2str, str2semtype
+from .semtype import SemType, ULF_MAPS, semtype2str, str2semtype, _normalize_synfeats_order
 from .lisp_keys import key_list
 
 
@@ -13,6 +13,7 @@ def compose_types(
         return None
     key = key_list([semtype2str(opr_semtype), semtype2str(arg_semtype),
                     bool(ignore_synfeats), opr_apply_fn_name])
+    key = _normalize_synfeats_order(key)
     entry = ULF_MAPS['compose_types'].get(key)
     if entry is None:
         return None

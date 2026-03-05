@@ -3,17 +3,37 @@ from dataclasses import dataclass, field
 from typing import Literal, Any, Sequence
 from .syntactic_features import SyntacticFeatures, DEFAULT_SYNTACTIC_FEATURES, lookup_feature_name
 from .feature_definition_declarations import FEATURE_DEFINITIONS_DICT
-from .lisp_keys import key_list
 import json
+import re
+
+
+def _normalize_synfeats_order(s: str) -> str:
+    def _sort_match(m):
+        vals = m.group(1).split(',')
+        return '%' + ','.join(sorted(vals))
+    return re.sub(r'%([A-Z!][A-Z0-9!,]*)', _sort_match, s)
 
 
 with open("ulf_maps.json") as file:
     ULF_MAPS: dict[str, dict[str, Any]] | None = json.load(file)
+    # str2semtype: add output-string keys
     extra = {}
     for k, v in ULF_MAPS['str2semtype'].items():
         if isinstance(v, dict) and 'string' in v and v['string'] != k:
             extra[v['string']] = v
     ULF_MAPS['str2semtype'].update(extra)
+    # str2semtype: also add normalized keys
+    normalized_extra = {}
+    for k, v in ULF_MAPS['str2semtype'].items():
+        nk = _normalize_synfeats_order(k)
+        if nk != k and nk not in ULF_MAPS['str2semtype']:
+            normalized_extra[nk] = v
+    ULF_MAPS['str2semtype'].update(normalized_extra)
+    # compose_types: normalize synfeat order in keys
+    ULF_MAPS['compose_types'] = {
+        _normalize_synfeats_order(k): v
+        for k, v in ULF_MAPS['compose_types'].items()
+    }
     
 Connective = Literal['=>', '>>', "%>"]
 CONNECTIVE_LIST = tuple(Connective.__args__)
@@ -172,7 +192,8 @@ def json_to_semtype(obj: dict) -> SemType | None:
 
 def str2semtype(s: str) -> SemType:
     """Parse a string into a SemType object"""
-    entry = ULF_MAPS.get('str2semtype', {}).get(s)
+    normalized = _normalize_synfeats_order(s)
+    entry = ULF_MAPS.get('str2semtype', {}).get(normalized)
     if entry is None or isinstance(entry, str):
         return None
     structured = entry.get('structured')
