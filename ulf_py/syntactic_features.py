@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
-from feature_definition_declarations import (
+from .feature_definition_declarations import (
     SYNTACTIC_FEATURE_VALUES,
     FEATURE_DEFINITIONS_DICT,
     get_syntactic_feature_combinator,

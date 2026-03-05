@@ -1,17 +1,17 @@
 from typing import Callable, Any
 
-from feature_definition_declarations import (
+from .feature_definition_declarations import (
     FeatureDefinition,
     FEATURE_DEFINITIONS_DICT,
     SYNTACTIC_FEATURE_VALUES,
     build_value_to_name_table,
 )
 
-from semtype import (
+from .semtype import (
     SemType, str2semtype, new_optional_semtype, semtype_match
 )
 
-from composition import compose_types
+from .composition import compose_types
 
 
 PREDICATE_SEMTYPE: SemType = str2semtype("({D|(D=>(S=>2))}^n=>(D=>(S=>2)))")
