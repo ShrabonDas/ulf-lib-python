@@ -1,7 +1,8 @@
 from .semtype import (
     SemType, AtomicType, OptionalType,
     # TODO: remove these after testing
-    ULF_MAPS, str2semtype, semtype2str
+    ULF_MAPS, str2semtype, semtype2str,
+    _normalize_synfeats_order
 )
 from .syntactic_features import (
     SyntacticFeatures, lookup_feature_name, default_syntactic_feature_value,
@@ -18,3 +19,5 @@ from .feature_definition_definitions import (
     auxiliary_combinator_fn, perfect_combinator_fn, progressive_combinator_fn,
     plurality_combinator_fn, passive_combinator_fn, lexical_combinator_fn,
 )
+
+from .lisp_keys import make_lisp_lookup_key
