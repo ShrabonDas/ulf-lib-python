@@ -7,6 +7,11 @@ import json
 import re
 
 
+def _normalize_whitespace(s: str) -> str:
+    """Collapse all whitespace sequences to a single space."""
+    return re.sub(r'\s+', ' ', s)
+
+
 def _normalize_synfeats_order(s: str) -> str:
     def _sort_match(m):
         vals = m.group(1).split(',')
@@ -29,10 +34,15 @@ with open("ulf_maps.json") as file:
         if nk != k and nk not in ULF_MAPS['str2semtype']:
             normalized_extra[nk] = v
     ULF_MAPS['str2semtype'].update(normalized_extra)
-    # compose_types: normalize synfeat order in keys
+    # compose_types: normalize synfeat order and whitespace in keys
     ULF_MAPS['compose_types'] = {
-        _normalize_synfeats_order(k): v
+        _normalize_whitespace(_normalize_synfeats_order(k)): v
         for k, v in ULF_MAPS['compose_types'].items()
+    }
+    # semtype_match: normalize synfeat order and whitespace in keys
+    ULF_MAPS['semtype_match'] = {
+        _normalize_whitespace(_normalize_synfeats_order(k)): v
+        for k, v in ULF_MAPS['semtype_match'].items()
     }
     
 Connective = Literal['=>', '>>', "%>"]
@@ -134,12 +144,19 @@ def semtype2str(st: SemType | None) -> str | None:
     if st is None:
         return None
     if isinstance(st, OptionalType):
-        inner = "|".join(semtype2str(t) for t in st.types)
+        parts = [semtype2str(t) for t in st.types if t is not None]
+        if not parts:
+            return None
+        inner = "|".join(parts)
         base = "{" + inner + "}"
     elif isinstance(st, AtomicType):
         base = st.name
     else:
-        base = f"({semtype2str(st.domain)}{st.connective}{semtype2str(st.range)})"
+        d = semtype2str(st.domain)
+        r = semtype2str(st.range)
+        if d is None or r is None:
+            return None
+        base = f"({d}{st.connective}{r})"
     return base + _modifiers_str(st)
     
 
@@ -192,8 +209,13 @@ def json_to_semtype(obj: dict) -> SemType | None:
 
 def str2semtype(s: str) -> SemType:
     """Parse a string into a SemType object"""
-    normalized = _normalize_synfeats_order(s)
+    s_upper = s.upper()
+    normalized = _normalize_synfeats_order(s_upper)
     entry = ULF_MAPS.get('str2semtype', {}).get(normalized)
+    if entry is None:
+        entry = ULF_MAPS.get('str2semtype', {}).get(s_upper)
+    if entry is None:
+        entry = ULF_MAPS.get('str2semtype', {}).get(s)
     if entry is None or isinstance(entry, str):
         return None
     structured = entry.get('structured')
@@ -205,5 +227,26 @@ def new_optional_semtype(options: Sequence[SemType]) -> OptionalType:
     """Create an optional type from a list of type options."""
     return OptionalType(types=list(options))
 
+_match_debug_count = 0
+
 def semtype_match(pattern: SemType, value: SemType) -> bool:
-    return True
+    global _match_debug_count
+    if pattern is None or value is None:
+        return False
+    from .lisp_keys import make_lisp_lookup_key
+    pattern_str = semtype2str(pattern)
+    value_str = semtype2str(value)
+    if pattern_str is None or value_str is None:
+        return False
+    key = make_lisp_lookup_key([pattern_str, value_str])
+    key = _normalize_whitespace(_normalize_synfeats_order(key))
+    entry = ULF_MAPS.get('semtype_match', {}).get(key)
+    
+    if _match_debug_count < 3 and entry is None:
+        print(f"  MATCH MISS: pattern={pattern_str[:80]}")
+        print(f"              value={value_str[:80]}")
+        _match_debug_count += 1
+    
+    if entry is None:
+        return False
+    return entry is True or entry == "true"
