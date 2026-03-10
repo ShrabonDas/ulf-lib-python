@@ -1,5 +1,5 @@
-from .semtype import SemType, ULF_MAPS, semtype2str, str2semtype, _normalize_synfeats_order
-from .lisp_keys import key_list
+from .semtype import SemType, ULF_MAPS, semtype2str, str2semtype, _normalize_synfeats_order, _normalize_whitespace
+from .lisp_keys import make_lisp_lookup_key
 
 
 def compose_types(
@@ -8,12 +8,15 @@ def compose_types(
     ignore_synfeats: bool = True,
     opr_apply_fn_name: str = 'APPLY-OPERATOR!',
 ) -> SemType | None:
-    """Compose two semtypes. Uses oracle lookup."""
     if opr_semtype is None or arg_semtype is None:
         return None
-    key = key_list([semtype2str(opr_semtype), semtype2str(arg_semtype),
+    opr_str = semtype2str(opr_semtype)
+    arg_str = semtype2str(arg_semtype)
+    if opr_str is None or arg_str is None:
+        return None
+    key = make_lisp_lookup_key([opr_str, arg_str,
                     bool(ignore_synfeats), opr_apply_fn_name])
-    key = _normalize_synfeats_order(key)
+    key = _normalize_whitespace(_normalize_synfeats_order(key))
     entry = ULF_MAPS['compose_types'].get(key)
     if entry is None:
         return None
