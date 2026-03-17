@@ -8,6 +8,13 @@ def compose_types(
     ignore_synfeats: bool = True,
     opr_apply_fn_name: str = 'APPLY-OPERATOR!',
 ) -> SemType | None:
+    """Compose an operator semtype with an argument semtype.
+    
+    WARNING: This is a oracle-based implementation that looks up precomputed results
+    form ulf_maps.json. It only returns a result for operator/argument
+    combinations that were recorded by the Lisp ULF system. Unrecognized
+    combinations return None.
+    """
     if opr_semtype is None or arg_semtype is None:
         return None
     opr_str = semtype2str(opr_semtype)
