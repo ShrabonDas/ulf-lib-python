@@ -13,6 +13,7 @@ def _normalize_whitespace(s: str) -> str:
 
 
 def _normalize_synfeats_order(s: str) -> str:
+    """Sort syntactic feature values alphabetically appearing in the string after `%`"""
     def _sort_match(m):
         vals = m.group(1).split(',')
         return '%' + ','.join(sorted(vals))
