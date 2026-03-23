@@ -1,0 +1,12 @@
+services:
+  data-augmentation:
+    image: data-augmentation:1.0
+    container_name: semantic-parsing
+    working_dir: /root/quicklisp/local-projects/
+    volumes:
+      - ./repos/gute:/root/quicklisp/local-projects/gute
+      - ./repos/ttt:/root/quicklisp/local-projects/ttt
+      - ./repos/ulf-lib:/root/quicklisp/local-projects/ulf-lib
+    tty: true
+    stdin_open: true
+    command: bash

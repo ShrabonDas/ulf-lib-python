@@ -1,43 +1,132 @@
-# ulf-lib
-[![Build Status](https://travis-ci.com/genelkim/ulf-lib.svg?branch=master)](https://travis-ci.com/genelkim/ulf-lib)
-[![Coverage Status](https://coveralls.io/repos/github/genelkim/ulf-lib/badge.svg?branch=master)](https://coveralls.io/github/genelkim/ulf-lib?branch=master)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+## Local Python setup (uv)
 
-Library for interfacing with and manipulating unscoped episodic logical forms (ULF). The library is primarily developed on SBCL with some secondary testing in Allegro Common Lisp. You can see the travis build for the status of this library in relation to several common lisp distributions.
+This repository uses **uv** to manage a reproducible local Python environment.
 
-## Dependencies
-- [TTT](https://github.com/genelkim/ttt)
-- [GUTE](https://github.com/genelkim/gute)
-- All other dependencies are available through Quicklisp
+### Prerequisites
 
-## Installation
-1. Install quicklisp by following instructions at https://www.quicklisp.org/beta/
-2. Then place the other depenedencies listed above in a folder accessible to Quicklisp or ASDF (which underlies quicklisp). How to do this in a couple ways is described by the following Stack Overflow answer https://stackoverflow.com/a/11265601.
+- Python **3.12+**
+- `uv` installed
 
-## Running the Code
-This is really meant to be a library, but to check the basic functionality of any of the functions, you can load the file load.lisp and enter the package :ulf-lib.  For example,
-```
-$ sbcl
-$ (ql:quickload :ulf-lib)
-$ ...[loading messages]...
-$ (in-package :ulf-lib)
-$ (phrasal-ulf-type? 'man.n)
-(NOUN PRED)
-$ (phrasal-ulf-type? '|John|)
-(TERM)
-$ (phrasal-ulf-type? '(the.d (angry.a man.n)))
-(TERM)
-$ (phrasal-ulf-type? '(see.v the.d man.n))
-(UNKNOWN)
-$ (apply-sub-macro '((sub what.pro ((past do.aux-s) he.pro (say.v *h))) ?))
-(((PAST DO.AUX-S) HE.PRO (SAY.V WHAT.PRO)) ?)
+### 1) Create the virtual environment
+
+From the project root:
+
+```bash
+uv venv --python 3.12
 ```
 
-## Running tests
-You can load the `ulf-lib/tests` library to run the tests. Please see the SBCL Travis build for the expected results.
-```
-* (ql:quickload :ulf-lib/tests)
-* (in-package :ulf-lib/tests)
-* (run)
+This creates a `.venv/` directory using Python 3.12.
+
+---
+
+### 2) Install dependencies
+
+```bash
+uv sync
 ```
 
+This installs **exact dependency versions** from `uv.lock` ensuring same environment.
+
+---
+
+### 3) Activate the environment
+
+```bash
+source .venv/bin/activate
+```
+
+---
+
+## Docker setup for legacy codebase using Quicklisp
+
+This project provides a Docker environment that launches an interactive container with Quicklisp configured and mounts three local repositories into the container for testing.
+
+### Prerequisites
+
+- Docker
+- Docker Compose v2
+
+---
+
+### 1) Clone required repositories
+
+The container expects these repos to exist locally under `./repos/`:
+
+```
+repos/
+├── gute/
+├── ttt/
+└── ulf-lib/
+```
+
+Clone them like this (from the project root):
+
+```bash
+mkdir -p repos
+git clone https://github.com/genelkim/gute.git repos/gute
+git clone https://github.com/genelkim/ttt.git repos/ttt
+git clone https://github.com/genelkim/ulf-lib.git repos/ulf-lib
+```
+
+> **Important:** These repos are mounted into the container at runtime via Docker volumes.
+> If they are missing, Docker may create empty directories and the container will not behave correctly.
+
+---
+
+### 2) Build the Docker image
+
+From the project root (where the `Dockerfile` is located):
+
+```bash
+docker build -t data-augmentation:1.0 .
+```
+
+> Note: Building the image does **not** require the repos above. The repos are injected at runtime via volume mounts.
+
+---
+
+### 3) Start the container
+
+Start the container in the background:
+
+```bash
+docker compose up -d
+```
+
+This starts a container named `semantic-parsing`
+
+and opens an interactive bash environment with the working directory set to:
+
+- `/root/quicklisp/local-projects/`
+
+The following host directories are mounted into the container:
+
+- `./repos/gute` → `/root/quicklisp/local-projects/gute`
+- `./repos/ttt` → `/root/quicklisp/local-projects/ttt`
+- `./repos/ulf-lib` → `/root/quicklisp/local-projects/ulf-lib`
+
+---
+
+### 4) Open a shell inside the running container
+
+Make the helper script executable (first time only):
+
+```bash
+chmod +x get_shell.bash
+```
+
+Then open a shell:
+
+```bash
+./get_shell.bash
+```
+
+(Equivalent to: `docker exec -it semantic-parsing bash`)
+
+---
+
+### 5) Stop and remove the container
+
+```bash
+docker compose down
+```
