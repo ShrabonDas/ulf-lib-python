@@ -13,3 +13,9 @@ repos
 forked_repo*
 .vscode
 testcases
+
+# Temporary files used for testing
+ulf_maps.json
+combine_features_cases.json
+*print_file_contents.bash
+out.txt

@@ -37,6 +37,25 @@ source .venv/bin/activate
 
 ---
 
+### 4) Download oracle data
+
+The test suite requires oracle data files that are hosted as GitHub release assets. Run the setup script to download them:
+
+```bash
+bash setup_data.bash
+```
+
+---
+
+### 5) Run tests
+
+```bash
+export PYTHONPATH=.
+python tests/test_syntactic_features.py
+```
+
+---
+
 ## Docker setup for legacy codebase using Quicklisp
 
 This project provides a Docker environment that launches an interactive container with Quicklisp configured and mounts three local repositories into the container for testing.
