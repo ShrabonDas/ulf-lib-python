@@ -20,6 +20,11 @@ def _normalize_synfeats_order(s: str) -> str:
     return re.sub(r'%([A-Z!][A-Z0-9!,]*)', _sort_match, s)
 
 
+# Oracle data file: ulf_maps.json
+# Precomputed semtype maps exported from the Common Lisp ULF system.
+# Contains lookup tables for str2semtype, compose_types, and semtype_match
+# This file is not in the repo - download it via `bash_setup_data.sh`
+# (hosted as Github release asset under tag v0.1.0).`
 with open("ulf_maps.json") as file:
     ULF_MAPS: dict[str, dict[str, Any]] | None = json.load(file)
     # str2semtype: add output-string keys
