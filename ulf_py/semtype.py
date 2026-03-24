@@ -52,7 +52,6 @@ with open("ulf_maps.json") as file:
     }
     
 Connective = Literal['=>', '>>', "%>"]
-CONNECTIVE_LIST = tuple(Connective.__args__)
 
 # ==================================================
 # Data Classes
@@ -135,6 +134,11 @@ def _type_params_str(tp: list['SemType'] | None) -> str:
 
 
 def _modifiers_str(st: SemType) -> str:
+    """
+    Build the modifier suffix string for a SemType.
+    
+    Order: exponent (^n) -> suffix (_V) -> synfeats (%T,LEX) -> type params ([...]).
+    """
     parts = []
     if st.ex != 1:
         parts.append(f"^{'n' if st.ex == -1 else st.ex}")
