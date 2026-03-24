@@ -5,14 +5,14 @@ from collections.abc import Callable
 # TODO: use class to represent argument and results types instead of Any wherever possible
 # Combinator Function signature:
 # (base_value, operator_value, argument_value, consequent_value, opr_semtype, arg_semtype) -> result_value
-CombinatorFn = Callable[[Any, Any, Any, Any, Any | None, Any | None], Any]
+CombinatorFn = Callable[[Any | None, Any | None, Any | None, Any | None, Any | None, Any | None], Any]
 
 # TODO: get_combinator make is a member function of the following class
 def default_combinator_fn(
-    base: Any,
-    opr: Any,
-    arg: Any,
-    csq: Any,
+    base: Any | None,
+    opr: Any | None,
+    arg: Any | None,
+    csq: Any | None,
     opr_semtype: Any | None = None,
     arg_semtype: Any | None = None,
 ) -> Any:
