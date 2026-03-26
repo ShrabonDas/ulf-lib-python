@@ -2,7 +2,8 @@ from .semtype import (
     SemType, AtomicType, OptionalType,
     # TODO: remove these after testing
     ULF_MAPS, str2semtype, semtype2str,
-    _normalize_synfeats_order
+    _normalize_synfeats_order,
+    SemTypeParseError, SemTypeParser
 )
 from .syntactic_features import (
     SyntacticFeatures, lookup_feature_name, default_syntactic_feature_value,

@@ -5,6 +5,7 @@ from .syntactic_features import SyntacticFeatures, DEFAULT_SYNTACTIC_FEATURES, l
 from .feature_definition_declarations import FEATURE_DEFINITIONS_DICT
 import json
 import re
+import string
 
 
 def _normalize_whitespace(s: str) -> str:
@@ -51,7 +52,8 @@ with open("ulf_maps.json") as file:
         for k, v in ULF_MAPS['semtype_match'].items()
     }
     
-Connective = Literal['=>', '>>', "%>"]
+CONNECTIVES = ('=>', '>>', "%>")
+Connective = Literal['=>', '>>', "%>"] # Keep in sync with CONNECTIVES
 
 # ==================================================
 # Data Classes
@@ -173,44 +175,192 @@ def semtype2str(st: SemType | None) -> str | None:
 # ==================================================
 # String Parser
 # ==================================================
+
+class SemTypeParseError(ValueError):
+    """Raised when a semtype string cannot be parsed."""
+    def __init__(self, msg: str, pos: int | None = None, input_str: str | None = None):
+        self.pos = pos
+        self.input_str = input_str
+        super().__init__(msg)
         
-def json_to_semtype(obj: dict) -> SemType | None:
-    """Convert a structured JSON dict (from lisp recorder) into a SemType."""
-    if obj is None:
-        return None
-    typ = obj['type']
-    ex = obj.get('ex', 1)
-    suffix = obj.get('suffix')
-    synfeats_raw = obj.get('synfeats')
-    if synfeats_raw:
-        order = {name: i for i, name in enumerate(FEATURE_DEFINITIONS_DICT)}
-        sorted_items = sorted(
-            ((k.upper(), _strip_package(v)) for k, v in synfeats_raw.items()),
-            key=lambda x: order.get(x[0], 999),
-        )
-        synfeats = SyntacticFeatures(feature_map=dict(sorted_items))
-    else:
-        synfeats = DEFAULT_SYNTACTIC_FEATURES.copy()
-    type_params_raw = obj.get('type_params')
-    type_params = [json_to_semtype(tp) for tp in type_params_raw] if type_params_raw else []
-    if typ == 'atomic':
-        return AtomicType(
-            name=obj['name'], ex=ex, suffix=suffix, synfeats=synfeats, type_params=type_params,
-        )
-    elif typ == 'function':
-        return SemType(
-            connective=obj['connective'],
-            domain=json_to_semtype(obj['domain']),
-            range=json_to_semtype(obj['range']),
-            ex=ex, suffix=suffix, synfeats=synfeats, type_params=type_params,
-        )
-    elif typ == 'optional':
-        return OptionalType(
-            types=[json_to_semtype(t) for t in obj['types']],
-            ex=ex, suffix=suffix, synfeats=synfeats, type_params=type_params,
-        )
-    else:
-        raise ValueError(f"Unknown semtype type in JSON: {typ!r}")
+        
+class SemTypeParser:
+    """
+    Recursive descent parser for semtype string representations.
+    
+    Examples:
+        "D" -> AtomicType(name="D")
+        "{D|(D=>(S=>2))}" -> SemType(domain=D, range=(S=>2))
+        "{D|(D=>(S=>2))}^2" -> OptionalType([...], ex=2)
+        "(D=>(S=>2))_V%LEX,!T" -> SemType(..., suffix="V", synfeats={"LEXICAL": "lex", "TENSE": "!t"})
+
+    Grammar:
+        type: primary modifiers
+        primary: '(' type CONN type ')' | '{' type ('|' type)* '}' | ATOM
+        modifiers: ('^' EXP | '_' SUFFIX | '%' FEATURES | '[' TYPEPARAMS ']')*
+        CONN: '=>' | '>>' | '%>'
+    """
+    
+    ATOM_CHARS = set(string.ascii_letters + string.digits + '+*-')
+    FEAT_STOP = set(',|})^_[]=>(')
+    
+    def __init__(self, s: str):
+        self.s = s
+        self.pos = 0
+        
+    def _error(self, msg: str) -> SemTypeParseError:
+        return SemTypeParseError(msg, pos=self.pos, input_str=self.s)
+    
+    def parse(self) -> SemType:
+        result = self._parse_type()
+        if self.pos != len(self.s):
+            raise self._error(
+                f"Trailing chars at pos {self.pos}: {self.s[self.pos:]!r}"
+            )
+        
+        return result
+        
+    def _peek(self) -> str | None:
+        return self.s[self.pos] if self.pos < len(self.s) else None
+    
+    def _advance(self) -> str:
+        c = self.s[self.pos]
+        self.pos += 1
+        return c
+    
+    def _expect(self, c: str) -> None:
+        if self._peek() != c:
+            raise self._error(f"Expected {c!r} at pos {self.pos}, got {self._peek()!r}")
+        self._advance()
+        
+    def _parse_type(self) -> SemType:
+        return self._parse_modifiers(self._parse_primary())
+    
+    def _parse_primary(self) -> SemType:
+        c = self._peek()
+        if c == '(':
+            return self._parse_function_type()
+        
+        if c == '{':
+            return self._parse_optional_type()
+        
+        if c is not None and c in self.ATOM_CHARS:
+            return self._parse_atom()
+        
+        raise self._error(f"Unexpected {c!r} at pos {self.pos}")
+        
+    def _parse_atom(self) -> AtomicType:
+        start = self.pos
+        while self.pos < len(self.s) and self.s[self.pos] in self.ATOM_CHARS:
+            self.pos += 1
+        if self.pos == start:
+            raise self._error(f"Expected atom at pos {self.pos}")
+        
+        return AtomicType(name=self.s[start:self.pos])
+    
+    def _parse_function_type(self) -> SemType:
+        self._expect('(')
+        domain = self._parse_type()
+        conn = self._parse_connective()
+        range_ = self._parse_type()
+        self._expect(')')
+        
+        return SemType(connective=conn, domain=domain, range=range_)
+    
+    def _parse_optional_type(self) -> OptionalType:
+        self._expect('{')
+        
+        types = [self._parse_type()]
+        while self._peek() == '|':
+            self._advance()
+            types.append(self._parse_type())
+        self._expect('}')
+        
+        return OptionalType(types=types)
+    
+    def _parse_connective(self) -> str:
+        if self.pos + 1 >= len(self.s):
+            raise self._error(f"Expected connective at pos {self.pos}")
+        two = self.s[self.pos:self.pos+2]
+        
+        if two in CONNECTIVES:
+            self.pos += 2
+            return two
+        
+        raise self._error(f"Expected connective at pos {self.pos}, got {two!r}")
+    
+    def _parse_modifiers(self, base: SemType) -> SemType:
+        while self.pos < len(self.s):
+            c = self._peek()
+            if c == '^':
+                self._advance()
+                base.ex = self._parse_exponent()
+            elif c == '_':
+                self._advance()
+                base.suffix = self._parse_suffix()
+            elif c == '%':
+                if self.pos + 1 < len(self.s) and self.s[self.pos + 1] == '>':
+                    break
+                self._advance()
+                base.synfeats = self._parse_features()
+            elif c == '[':
+                base.type_params = self._parse_type_params()
+            else:
+                break
+            
+        return base
+    
+    def _parse_exponent(self) -> int:
+        start = self.pos
+        while self.pos < len(self.s) and self.s[self.pos].isalnum():
+            self.pos += 1
+        token = self.s[start:self.pos]
+        
+        if not token:
+            raise self._error(f"Expected exponent at pos {start}")
+        
+        return -1 if token.lower() == 'n' else int(token)
+    
+    def _parse_suffix(self) -> str:
+        start = self.pos
+        while self.pos < len(self.s) and self.s[self.pos].isalpha():
+            self.pos += 1
+        suffix = self.s[start:self.pos]
+        
+        if not suffix:
+            raise self._error(f"Expected suffix at pos {start}")
+        
+        return suffix
+    
+    def _parse_features(self) -> SyntacticFeatures:
+        feat_map: dict[str, str] = {}
+        while self.pos < len(self.s) and self.s[self.pos] not in self.FEAT_STOP:
+            start = self.pos
+            while self.pos < len(self.s) and self.s[self.pos] not in self.FEAT_STOP:
+                self.pos += 1
+            raw = self.s[start: self.pos]
+            
+            if raw:
+                feat_val = raw.lower()
+                feat_name = lookup_feature_name(feat_val)
+                
+                if feat_name is not None:
+                    feat_map[feat_name] = feat_val
+                    
+            if self.pos < len(self.s) and self.s[self.pos] == ',':
+                self.pos += 1
+                
+        return SyntacticFeatures(feature_map=feat_map)
+    
+    def _parse_type_params(self) -> list[SemType]:
+        self._expect('[')
+        params = [self._parse_type()]
+        while self._peek() == ',':
+            self._advance()
+            params.append(self._parse_type())
+        self._expect(']')
+        
+        return params
     
     
 # ==================================================
@@ -218,20 +368,8 @@ def json_to_semtype(obj: dict) -> SemType | None:
 # ==================================================
 
 def str2semtype(s: str) -> SemType:
-    """Parse a string into a SemType object"""
-    s_upper = s.upper()
-    normalized = _normalize_synfeats_order(s_upper)
-    entry = ULF_MAPS.get('str2semtype', {}).get(normalized)
-    if entry is None:
-        entry = ULF_MAPS.get('str2semtype', {}).get(s_upper)
-    if entry is None:
-        entry = ULF_MAPS.get('str2semtype', {}).get(s)
-    if entry is None or isinstance(entry, str):
-        return None
-    structured = entry.get('structured')
-    if structured is None:
-        return None
-    return json_to_semtype(structured)
+    """Parse a string into a SemType object using the recursive descent parser."""
+    return SemTypeParser(s).parse()
 
 def new_optional_semtype(options: Sequence[SemType]) -> OptionalType:
     """Create an optional type from a list of type options."""
