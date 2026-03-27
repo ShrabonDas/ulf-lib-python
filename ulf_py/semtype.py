@@ -427,6 +427,12 @@ def copy_semtype(
         type_params=type_params,
     )
 
+def _binarize_options(options: list[SemType]) -> OptionalType:
+    """Build a right-leaning binary tree: [A, B, C, D] -> {A|{B|{C|D}}}"""
+    if len(options) <= 2:
+        return OptionalType(types=options)
+    return OptionalType(types=[options[0], _binarize_options(options[1:])])
+
 # ==================================================
 # Public API
 # ==================================================
