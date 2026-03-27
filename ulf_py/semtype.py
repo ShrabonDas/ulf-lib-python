@@ -494,7 +494,7 @@ def expand_variable_exponents(st: SemType | None) -> SemType | None:
 # Optional type domain distribution
 # ==================================================
     
-def _apply_distribution(domain, range, ex, suffix, synfeats, type_params, connective):
+def _apply_distribution(domain, range_, ex, suffix, synfeats, type_params, connective):
     """Build a SemType, distributing optional domains when appropriate.
     
     Called during ^n expansion to push the range into optional domains.
@@ -517,9 +517,9 @@ def _apply_distribution(domain, range, ex, suffix, synfeats, type_params, connec
     
     # Domain is None -> return range with enclosing SemType's ex/suffix/synfeats applied
     if domain is None:
-        if range is None:
+        if range_ is None:
             return None
-        result = copy_semtype(range)
+        result = copy_semtype(range_)
         result.ex = ex
         result.suffix = suffix
         if synfeats is not None:
@@ -532,7 +532,7 @@ def _apply_distribution(domain, range, ex, suffix, synfeats, type_params, connec
         for optional_domain in domain.types:
             sub = _apply_distribution(
                 domain=copy_semtype(optional_domain),
-                range=copy_semtype(range),
+                range=copy_semtype(range_),
                 ex=1,
                 suffix=suffix,
                 synfeats=synfeats.copy() if synfeats else None,
@@ -548,7 +548,7 @@ def _apply_distribution(domain, range, ex, suffix, synfeats, type_params, connec
     return SemType(
         connective=connective,
         domain=domain,
-        range=range,
+        range=range_,
         ex=ex,
         suffix=suffix,
         synfeats=sf,
