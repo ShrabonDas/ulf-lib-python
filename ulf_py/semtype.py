@@ -562,7 +562,9 @@ def _apply_distribution(domain, range, ex, suffix, synfeats, type_params, connec
 
 def str2semtype(s: str) -> SemType | None:
     """Parse a string into a SemType object using the recursive descent parser."""
-    return SemTypeParser(s).parse()
+    parsed = SemTypeParser(s).parse()
+    expanded = expand_variable_exponents(parsed)
+    return expanded
 
 def new_optional_semtype(options: Sequence[SemType]) -> OptionalType:
     """Create an optional type from a list of type options."""
