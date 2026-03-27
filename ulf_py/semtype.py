@@ -433,6 +433,19 @@ def _binarize_options(options: list[SemType]) -> OptionalType:
         return OptionalType(types=options)
     return OptionalType(types=[options[0], _binarize_options(options[1:])])
 
+def _expand_exponent(st: SemType) -> SemType | None:
+    """Expand ^n into a chain of optionals: A^n -> {None|{A^1|{A^2|A^3}}}"""
+    if st.ex != -1: # no ^n exponent, nothing to expand
+        return st
+    
+    options = []
+    for exp in range(0, SEMTYPE_MAX_EXPONENT + 1):
+        if exp == 0:
+            options.append(None)
+        else:
+            options.append(copy_semtype(st, c_ex=exp))
+    return _binarize_options(options)
+
 # ==================================================
 # Public API
 # ==================================================
