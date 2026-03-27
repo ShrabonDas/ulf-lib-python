@@ -52,8 +52,8 @@ with open("ulf_maps.json") as file:
         for k, v in ULF_MAPS['semtype_match'].items()
     }
     
-CONNECTIVES = ('=>', '>>', "%>")
-Connective = Literal['=>', '>>', "%>"] # Keep in sync with CONNECTIVES
+Connective = Literal['=>', '>>', "%>"] 
+CONNECTIVES = Connective.__args__
 
 SEMTYPE_MAX_EXPONENT = 3
 
@@ -479,7 +479,7 @@ def expand_variable_exponents(st: SemType | None) -> SemType | None:
             and new_domain.ex == 1):
         return _apply_distribution(
             domain=new_domain, 
-            range=new_range,
+            range_=new_range,
             ex=result.ex,
             suffix=result.suffix,
             synfeats=result.synfeats,
@@ -532,7 +532,7 @@ def _apply_distribution(domain, range_, ex, suffix, synfeats, type_params, conne
         for optional_domain in domain.types:
             sub = _apply_distribution(
                 domain=copy_semtype(optional_domain),
-                range=copy_semtype(range_),
+                range_=copy_semtype(range_),
                 ex=1,
                 suffix=suffix,
                 synfeats=synfeats.copy() if synfeats else None,
