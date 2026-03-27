@@ -487,13 +487,73 @@ def expand_variable_exponents(st: SemType | None) -> SemType | None:
             connective=result.connective,
         )
     
+    return result
+    
     
 # ==================================================
 # Optional type domain distribution
 # ==================================================
     
 def _apply_distribution(domain, range, ex, suffix, synfeats, type_params, connective):
-    pass
+    """Build a SemType, distributing optional domains when appropriate.
+    
+    Called during ^n expansion to push the range into optional domains.
+    Four cases:
+        
+        ex == 0: None (^0 means no type)
+        domain is None: range with suffix/synfeats applied
+        domain is optional, ex == 1: distribute range into each option
+                                     ({A|B}=>C) -> {(A=>C)|(B=>C)}, recursing
+                                     so nested optionals with ex=1 keep distributing
+        otherwise: generic SemType (domain => range)
+        
+    Optionals with ex != 1 (e.g. {A|B}^2) are left intact as SemType
+    domains w/ ex = 1 optionals only triggers distribution
+    """
+    
+    # Exponent 0 -> None
+    if ex == 0:
+        return None
+    
+    # Domain is None -> return range with enclosing SemType's ex/suffix/synfeats applied
+    if domain is None:
+        if range is None:
+            return None
+        result = copy_semtype(range)
+        result.ex = ex
+        result.suffix = suffix
+        if synfeats is not None:
+            result.synfeats = synfeats.copy()
+        return result
+    
+    # Domain to OptionalType with ex = 1 -> distribute
+    if isinstance(domain, OptionalType) and domain.ex == 1:
+        new_types = []
+        for optional_domain in domain.types:
+            sub = _apply_distribution(
+                domain=copy_semtype(optional_domain),
+                range=copy_semtype(range),
+                ex=1,
+                suffix=suffix,
+                synfeats=synfeats.copy() if synfeats else None,
+                type_params=[copy_semtype(tp) for tp in type_params] if type_params else [],
+                connective=connective,
+            )
+            new_types.append(sub)
+        return OptionalType(types=new_types)
+    
+    # Normal SemType -> no distribution needed
+    sf = synfeats.copy() if synfeats else DEFAULT_SYNTACTIC_FEATURES.copy()
+    tp = list(type_params) if type_params else []
+    return SemType(
+        connective=connective,
+        domain=domain,
+        range=range,
+        ex=ex,
+        suffix=suffix,
+        synfeats=sf,
+        type_params=tp
+    ) 
     
 
 # ==================================================
