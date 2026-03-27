@@ -55,6 +55,8 @@ with open("ulf_maps.json") as file:
 CONNECTIVES = ('=>', '>>', "%>")
 Connective = Literal['=>', '>>', "%>"] # Keep in sync with CONNECTIVES
 
+SEMTYPE_MAX_EXPONENT = 3
+
 # ==================================================
 # Data Classes
 # ==================================================
@@ -362,12 +364,74 @@ class SemTypeParser:
         
         return params
     
+# ==================================================
+# Variable exponent expansion
+# ==================================================
     
+# None is a valid value for fields like suffix, synfeats
+# Hence, a unique sentinel is created so it's never equal to anything else
+_UNSET = object() 
+
+def copy_semtype(
+    st: SemType | None,
+    *,
+    c_domain=_UNSET,
+    c_range=_UNSET,
+    c_ex=_UNSET,
+    c_suffix=_UNSET,
+    c_types=_UNSET,
+    c_synfeats=_UNSET,
+    c_type_params=_UNSET,
+    c_connective=_UNSET,
+) -> SemType | None:
+    """Deep copy a SemType, optionally overriding specific fields (if c_* provided)."""
+    if st is None:
+        return None
+    
+    ex = c_ex if c_ex is not _UNSET else st.ex
+    suffix = c_suffix if c_suffix is not _UNSET else st.suffix
+    connective = c_connective if c_connective is not _UNSET else st.connective
+    synfeats = c_synfeats if c_synfeats is not _UNSET else (st.synfeats.copy() if st.synfeats else DEFAULT_SYNTACTIC_FEATURES.copy())
+    type_params = c_type_params if c_type_params is not _UNSET else [copy_semtype(tp) for tp in st.type_params]
+    
+    if isinstance(st, AtomicType):
+        return AtomicType(
+            name=st.name,
+            ex=ex,
+            suffix=suffix,
+            synfeats=synfeats,
+            type_params=type_params,
+            connective=connective,
+        )
+    
+    if isinstance(st, OptionalType):
+        types = c_types if c_types is not _UNSET else [copy_semtype(t) for t in st.types]
+        return OptionalType(
+            types=types or [],
+            ex=ex,
+            suffix=suffix,
+            synfeats=synfeats,
+            type_params=type_params,
+            connective=connective,
+        )
+    
+    domain = c_domain if c_domain is not _UNSET else copy_semtype(st.domain)
+    range_ = c_range if c_range is not _UNSET else copy_semtype(st.range)
+    return SemType(
+        connective=connective,
+        domain=domain,
+        range=range_,
+        ex=ex,
+        suffix=suffix,
+        synfeats=synfeats,
+        type_params=type_params,
+    )
+
 # ==================================================
 # Public API
 # ==================================================
 
-def str2semtype(s: str) -> SemType:
+def str2semtype(s: str) -> SemType | None:
     """Parse a string into a SemType object using the recursive descent parser."""
     return SemTypeParser(s).parse()
 
