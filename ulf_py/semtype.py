@@ -446,6 +446,56 @@ def _expand_exponent(st: SemType) -> SemType | None:
             options.append(copy_semtype(st, c_ex=exp))
     return _binarize_options(options)
 
+
+def expand_variable_exponents(st: SemType | None) -> SemType | None:
+    """Recursively expand all ^n exponents in the tree (bottom-up)."""
+    if st is None:
+        return None
+    
+    if isinstance(st, OptionalType):
+        expanded_types = [expand_variable_exponents(t) for t in st.types]
+        result = copy_semtype(st, c_types=expanded_types)
+        if result.ex == -1:
+            return _expand_exponent(result)
+        return result
+    
+    if isinstance(st, AtomicType):
+        if st.ex == -1:
+            return _expand_exponent(st)
+        return st
+    
+    new_domain = expand_variable_exponents(st.domain)
+    new_range = expand_variable_exponents(st.range)
+    new_type_params = [expand_variable_exponents(tp) for tp in st.type_params]
+    result = copy_semtype(st, c_domain=new_domain, c_range=new_range, c_type_params=new_type_params)
+    
+    if result.ex == -1:
+        return _expand_exponent(result)
+        
+    # If original domain had ^n (ex=-1), distribute it
+    if (st.domain is not None
+            and st.domain.ex == -1
+            and isinstance(new_domain, OptionalType)
+            and new_domain.ex == 1):
+        return _apply_distribution(
+            domain=new_domain, 
+            range=new_range,
+            ex=result.ex,
+            suffix=result.suffix,
+            synfeats=result.synfeats,
+            type_params=result.type_params,
+            connective=result.connective,
+        )
+    
+    
+# ==================================================
+# Optional type domain distribution
+# ==================================================
+    
+def _apply_distribution(domain, range, ex, suffix, synfeats, type_params, connective):
+    pass
+    
+
 # ==================================================
 # Public API
 # ==================================================
