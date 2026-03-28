@@ -81,7 +81,7 @@ class SemType:
     range: "SemType" | None = None
     ex: int = 1
     suffix: str | None = None
-    type_params: list['SemType'] = field(default_factory=list)
+    type_params: list['SemType | None'] = field(default_factory=list)
     synfeats: SyntacticFeatures = field(default_factory=lambda: DEFAULT_SYNTACTIC_FEATURES.copy())
     
     
@@ -98,7 +98,7 @@ class OptionalType(SemType):
     """
     One of several alternatives
     """
-    types: list[SemType] = field(default_factory=list)      # {A | B | C}
+    types: list[SemType | None] = field(default_factory=list)      # {A | B | C}
     
     
 # ==================================================
@@ -211,15 +211,6 @@ class SemTypeParser:
     def _error(self, msg: str) -> SemTypeParseError:
         return SemTypeParseError(msg, pos=self.pos, input_str=self.s)
     
-    def parse(self) -> SemType:
-        result = self._parse_type()
-        if self.pos != len(self.s):
-            raise self._error(
-                f"Trailing chars at pos {self.pos}: {self.s[self.pos:]!r}"
-            )
-        
-        return result
-        
     def _peek(self) -> str | None:
         return self.s[self.pos] if self.pos < len(self.s) else None
     
@@ -233,10 +224,25 @@ class SemTypeParser:
             raise self._error(f"Expected {c!r} at pos {self.pos}, got {self._peek()!r}")
         self._advance()
         
-    def _parse_type(self) -> SemType:
+    def _consume_while(self, pred) -> str:
+        start = self.pos
+        while self.pos < len(self.s) and pred(self.s[self.pos]):
+            self.pos += 1
+        return self.s[start:self.pos]
+    
+    def parse(self) -> SemType | None:
+        result = self._parse_type()
+        if self.pos != len(self.s):
+            raise self._error(
+                f"Trailing chars at pos {self.pos}: {self.s[self.pos:]!r}"
+            )
+        
+        return result
+        
+    def _parse_type(self) -> SemType | None:
         return self._parse_modifiers(self._parse_primary())
     
-    def _parse_primary(self) -> SemType:
+    def _parse_primary(self) -> SemType | None:
         c = self._peek()
         if c == '(':
             return self._parse_function_type()
@@ -249,18 +255,13 @@ class SemTypeParser:
         
         raise self._error(f"Unexpected {c!r} at pos {self.pos}")
         
-    def _parse_atom(self) -> AtomicType:
-        start = self.pos
-        while self.pos < len(self.s) and self.s[self.pos] in self.ATOM_CHARS:
-            self.pos += 1
-        if self.pos == start:
+    def _parse_atom(self) -> AtomicType | None:
+        token = self._consume_while(lambda ch: ch in self.ATOM_CHARS)
+        
+        if not token:
             raise self._error(f"Expected atom at pos {self.pos}")
         
-        token = self.s[start:self.pos]
-        if token.upper() == 'NIL':
-            return None
-        
-        return AtomicType(name=token)
+        return None if token.upper() == 'NIL' else AtomicType(name=token)
     
     def _parse_function_type(self) -> SemType:
         self._expect('(')
@@ -283,18 +284,19 @@ class SemTypeParser:
         return OptionalType(types=types)
     
     def _parse_connective(self) -> str:
-        if self.pos + 1 >= len(self.s):
-            raise self._error(f"Expected connective at pos {self.pos}")
-        two = self.s[self.pos:self.pos+2]
+        two = self.s[self.pos:self.pos + 2]
         
         if two in CONNECTIVES:
             self.pos += 2
             return two
         
-        raise self._error(f"Expected connective at pos {self.pos}, got {two!r}")
+        raise self._error(f"Expected connective at pos {self.pos}")
     
-    def _parse_modifiers(self, base: SemType) -> SemType:
-        while self.pos < len(self.s):
+    def _parse_modifiers(self, base: SemType | None) -> SemType | None:
+        if base is None:
+            return None
+        
+        while True:
             c = self._peek()
             if c == '^':
                 self._advance()
@@ -316,9 +318,7 @@ class SemTypeParser:
     
     def _parse_exponent(self) -> int:
         start = self.pos
-        while self.pos < len(self.s) and self.s[self.pos].isalnum():
-            self.pos += 1
-        token = self.s[start:self.pos]
+        token = self._consume_while(str.isalnum)
         
         if not token:
             raise self._error(f"Expected exponent at pos {start}")
@@ -327,9 +327,7 @@ class SemTypeParser:
     
     def _parse_suffix(self) -> str:
         start = self.pos
-        while self.pos < len(self.s) and self.s[self.pos].isalpha():
-            self.pos += 1
-        suffix = self.s[start:self.pos]
+        suffix = self._consume_while(str.isalpha)
         
         if not suffix:
             raise self._error(f"Expected suffix at pos {start}")
@@ -339,10 +337,7 @@ class SemTypeParser:
     def _parse_features(self) -> SyntacticFeatures:
         feat_map: dict[str, str] = {}
         while self.pos < len(self.s) and self.s[self.pos] not in self.FEAT_STOP:
-            start = self.pos
-            while self.pos < len(self.s) and self.s[self.pos] not in self.FEAT_STOP:
-                self.pos += 1
-            raw = self.s[start: self.pos]
+            raw = self._consume_while(lambda ch: ch not in self.FEAT_STOP)
             
             if raw:
                 feat_val = raw.lower()
@@ -351,12 +346,12 @@ class SemTypeParser:
                 if feat_name is not None:
                     feat_map[feat_name] = feat_val
                     
-            if self.pos < len(self.s) and self.s[self.pos] == ',':
-                self.pos += 1
+            if self._peek() == ',':
+                self._advance()
                 
         return SyntacticFeatures(feature_map=feat_map)
     
-    def _parse_type_params(self) -> list[SemType]:
+    def _parse_type_params(self) -> list[SemType | None]:
         self._expect('[')
         params = [self._parse_type()]
         while self._peek() == ';':
@@ -429,7 +424,7 @@ def copy_semtype(
         type_params=type_params,
     )
 
-def _binarize_options(options: list[SemType]) -> OptionalType:
+def _binarize_options(options: list[SemType | None]) -> OptionalType:
     """Build a right-leaning binary tree: [A, B, C, D] -> {A|{B|{C|D}}}"""
     if len(options) <= 2:
         return OptionalType(types=options)
@@ -617,7 +612,7 @@ def str2semtype(s: str) -> SemType | None:
     expanded = expand_variable_exponents(parsed)
     return expanded
 
-def new_optional_semtype(options: Sequence[SemType]) -> OptionalType:
+def new_optional_semtype(options: Sequence[SemType | None]) -> OptionalType:
     """Create an optional type from a list of type options."""
     return OptionalType(types=list(options))
 
