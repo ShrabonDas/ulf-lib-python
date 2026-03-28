@@ -256,7 +256,11 @@ class SemTypeParser:
         if self.pos == start:
             raise self._error(f"Expected atom at pos {self.pos}")
         
-        return AtomicType(name=self.s[start:self.pos])
+        token = self.s[start:self.pos]
+        if token.upper() == 'NIL':
+            return None
+        
+        return AtomicType(name=token)
     
     def _parse_function_type(self) -> SemType:
         self._expect('(')
@@ -355,7 +359,7 @@ class SemTypeParser:
     def _parse_type_params(self) -> list[SemType]:
         self._expect('[')
         params = [self._parse_type()]
-        while self._peek() == ',':
+        while self._peek() == ';':
             self._advance()
             params.append(self._parse_type())
         self._expect(']')
