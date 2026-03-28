@@ -135,8 +135,9 @@ def semtype2str(st: SemType | None) -> str | None:
             if tp is None:
                 raise ValueError("type_params must not contain None")
             s = semtype2str(tp)
-            if s is not None:
-                rendered_params.append(s)
+            if s is None:
+                raise ValueError("type_params must serialize to a non-None string")
+            rendered_params.append(s)
         type_params_str = "[" + ";".join(rendered_params) + "]"
             
     # order of modifiers: _suffix, %synfeats, ^exponent
