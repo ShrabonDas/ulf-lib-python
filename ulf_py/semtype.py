@@ -105,14 +105,6 @@ class OptionalType(SemType):
 # semtype2str - reconstruct the string from a SemType tree
 # ==================================================
 
-def _strip_package(val: str | None) -> str | None:
-    """Strip Lisp package prefix: 'ulf-lib::lex' -> 'lex'."""
-    if val is None:
-        return None
-    if '::' in val:
-        return val.rsplit('::', 1)[1]
-    return val
-
 def _synfeats_str(sf: SyntacticFeatures | None) -> str:
     if sf is None or not sf.feature_map:
         return ""
@@ -136,42 +128,54 @@ def _type_params_str(tp: list['SemType'] | None) -> str:
         return ""
     return "[" + ",".join(semtype2str(t) for t in tp) + "]"
 
-
-def _modifiers_str(st: SemType) -> str:
-    """
-    Build the modifier suffix string for a SemType.
-    
-    Order: exponent (^n) -> suffix (_V) -> synfeats (%T,LEX) -> type params ([...]).
-    """
-    parts = []
-    if st.ex != 1:
-        parts.append(f"^{'n' if st.ex == -1 else st.ex}")
-    if st.suffix:
-        parts.append(f"_{st.suffix}")
-    parts.append(_synfeats_str(st.synfeats))
-    parts.append(_type_params_str(st.type_params))
-    return "".join(parts)
-
-
 def semtype2str(st: SemType | None) -> str | None:
-    """Convert a SemType tree back to its string representation."""
+    """Convert a SemType tree back to its Lisp-style string representation."""
     if st is None:
         return None
-    if isinstance(st, OptionalType):
-        parts = [semtype2str(t) for t in st.types if t is not None]
-        if not parts:
+    
+    # type params: [A;B;C]
+    type_params_str = ""
+    if st.type_params:
+        rendered_params = []
+        for tp in st.type_params:
+            s = semtype2str(tp)
+            if s is not None:
+                rendered_params.append(s)
+        type_params_str = "[" + ";".join(rendered_params) + "]"
+            
+    # order of modifiers: _suffix, %synfeats, ^exponent
+    suffix_str = f"_{st.suffix}" if st.suffix else ""
+    synfeat_str = _synfeats_str(st.synfeats)
+    exponent_str = "" if st.ex == 1 else f"^{'n' if st.ex == -1 else st.ex}"
+    
+    if isinstance(st, AtomicType):
+        base = f"{st.name}{suffix_str}{synfeat_str}{exponent_str}"
+        
+    elif isinstance(st, OptionalType):
+        rendered_options: list[str] = []
+        for t in st.types:
+            if t is None:
+                rendered_options.append('NIL')
+            else:
+                s = semtype2str(t)
+                if s is None:
+                    return None
+                rendered_options.append(s)
+                
+        if not rendered_options:
             return None
-        inner = "|".join(parts)
-        base = "{" + inner + "}"
-    elif isinstance(st, AtomicType):
-        base = st.name
+        
+        base = "{" + "|".join(rendered_options) + "}" + exponent_str
+        
     else:
         d = semtype2str(st.domain)
         r = semtype2str(st.range)
         if d is None or r is None:
             return None
-        base = f"({d}{st.connective}{r})"
-    return base + _modifiers_str(st)
+        base = f"({d}{st.connective}{r}){suffix_str}{synfeat_str}{exponent_str}"
+        
+    return base if not type_params_str else f"{base}{type_params_str}"
+    
     
 
 # ==================================================
