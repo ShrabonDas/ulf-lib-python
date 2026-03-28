@@ -351,8 +351,10 @@ class SemTypeParser:
                 feat_val = raw.lower()
                 feat_name = lookup_feature_name(feat_val)
                 
-                if feat_name is not None:
-                    feat_map[feat_name] = feat_val
+                if feat_name is None:
+                    raise self._error(f"Unknown syntactic feature value {raw!r} at pos {self.pos}")
+                
+                feat_map[feat_name] = feat_val
                     
             if self._peek() == ',':
                 self._advance()
