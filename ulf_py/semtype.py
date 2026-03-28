@@ -446,7 +446,6 @@ def _expand_exponent(st: SemType) -> SemType | None:
             options.append(copy_semtype(st, c_ex=exp))
     return _binarize_options(options)
 
-
 def expand_variable_exponents(st: SemType | None) -> SemType | None:
     """Recursively expand all ^n exponents in the tree (bottom-up)."""
     if st is None:
@@ -555,6 +554,56 @@ def _apply_distribution(domain, range_, ex, suffix, synfeats, type_params, conne
         type_params=tp
     ) 
     
+# ==================================================
+# Exponent unrolling (for matching)
+# ==================================================
+    
+def unroll_exponent_step(st: SemType | None) -> SemType | None:
+    """
+    Undo one layer of exponent compression.
+    
+    This rewrites a SemType with exponent structure into an equivalent form with
+    one exponent layer made explicit as a function type. For example, ``A^4``
+    becomes ``(A => A^3)``, and ``(A^3 => B)`` becomes ``(A => (A^2 => B))``.
+    
+    Args:
+        st: The semantic type to normalize
+        
+    Returns:
+        A SemType with one exponent layer unrolled, or ``st`` unchanged when no
+        unrolling is needed.
+    """
+    if st is None:
+        return None
+    
+    # Top-level exponent > 1: A^4 -> (A => A^3)
+    if st.ex > 1:
+        new_domain = copy_semtype(st, c_ex=1)
+        new_range = copy_semtype(st, c_ex=st.ex - 1)
+        return SemType(
+            connective='=>',
+            domain=new_domain,
+            range=new_range,
+        )
+    
+    # Structured type whose domain exponent > 1
+    # (A^3 => B^2) -> (A => (A^2 => B^2))
+    if (
+        not isinstance(st, AtomicType)
+        and not isinstance(st, OptionalType)
+        and st.domain is not None
+        and st.domain.ex > 1
+    ):
+        new_domain = copy_semtype(st.domain, c_ex=1)
+        new_range = SemType(
+            connective='=>',
+            domain=copy_semtype(st.domain, c_ex=st.domain.ex - 1),
+            range=copy_semtype(st.range),
+        )
+        return copy_semtype(st, c_domain=new_domain, c_range=new_range, c_connective='=>')
+    
+    return st
+    
 
 # ==================================================
 # Public API
@@ -570,26 +619,121 @@ def new_optional_semtype(options: Sequence[SemType]) -> OptionalType:
     """Create an optional type from a list of type options."""
     return OptionalType(types=list(options))
 
-_match_debug_count = 0
+def _synfeat_diff_for_right_arrow(st: SemType) -> tuple[SyntacticFeatures, SyntacticFeatures]:
+    """
+    Keep only features that are specified on both domain and range and differ.
+    
+    Returns:
+        (domain_diff_feats, range_diff_feats)
+    """
+    domain_sf = (st.domain.synfeats if st.domain and st.domain.synfeats else SyntacticFeatures()).copy()
+    range_sf = (st.range.synfeats if st.range and st.range.synfeats else SyntacticFeatures()).copy()
+    
+    keys = set(domain_sf.get_feature_names()) | set(range_sf.get_feature_names())
+    for key in keys:
+        dval = domain_sf.feature_value(key)
+        rval = range_sf.feature_value(key)
+        if not (dval is not None and rval is not None and dval != rval):
+            domain_sf.del_feature_value(key)
+            range_sf.del_feature_value(key)
+            
+    return domain_sf, range_sf
 
-def semtype_match(pattern: SemType, value: SemType) -> bool:
-    global _match_debug_count
+def _right_arrow_synfeats_match(x_st: SemType, y_st: SemType) -> bool:
+    """
+    Return whether two ``>>`` SemTypes have the same explicit domain-to-range
+    syntactic-feature change.
+    
+    This ignores the unchanged features and features not specified on both sides, and
+    compares only the differing feature sets extracted from each SemType.
+    """
+    x_domain_diff, x_range_diff = _synfeat_diff_for_right_arrow(x_st)
+    y_domain_diff, y_range_diff = _synfeat_diff_for_right_arrow(y_st)
+    return x_domain_diff.equal(y_domain_diff) and x_range_diff.equal(y_range_diff)
+
+def semtype_match(
+    pattern: SemType | None,
+    value: SemType | None,
+    ignore_exp: bool | str | None = None,
+) -> bool:
+    """
+    Returns whether ``value`` satisfies the semantic type pattern ``pattern``.
+    
+    Rules:
+        - ``None`` matches only ``None``.
+        - If either side is an ``OptionalType``, the match succeeds when any
+          pattern/value option pair matches.
+        - If both sides specify a suffix, the suffixes must be equal.
+        - Syntactic features are matched with ``pattern`` treated as the constraint
+          and ``value`` as the candidate.
+        - Atomic types match only when both are atomic and have the same name.
+        - Non-atomic types match only when their domains, ranges, and connectives match recursively.
+        - For ``>>`` types, the explicit syntactic-feature change from domain to range must agree
+          on both sides.
+          
+    Args:
+        pattern: The semantic type pattern to check against.
+        value: The candidate semantic type being tested.
+        ignore_exp: 
+            Controls exponent-sensitive matching.
+            - ``None`` or ``False``: unroll one exponent step before matching.
+            - ``True``: ignore exponent differences at the current level.
+            - ``'r'``: ignore exponent differences recursively.
+            
+    Returns:
+        ``True`` if ``value`` matches ``pattern``, otherwise ``False``.
+    """
+    
+    # Handles the case when expanded form (specifically ^0) produces None
     if pattern is None or value is None:
-        return False
-    from .lisp_keys import make_lisp_lookup_key
-    pattern_str = semtype2str(pattern)
-    value_str = semtype2str(value)
-    if pattern_str is None or value_str is None:
-        return False
-    key = make_lisp_lookup_key([pattern_str, value_str])
-    key = _normalize_whitespace(_normalize_synfeats_order(key))
-    entry = ULF_MAPS.get('semtype_match', {}).get(key)
+        return pattern is None and value is None
     
-    if _match_debug_count < 3 and entry is None:
-        print(f"  MATCH MISS: pattern={pattern_str[:80]}")
-        print(f"              value={value_str[:80]}")
-        _match_debug_count += 1
+    x = pattern if ignore_exp else unroll_exponent_step(pattern)
+    y = value if ignore_exp else unroll_exponent_step(value)
     
-    if entry is None:
+    if x is None or y is None:
+        return x is None and y is None
+    
+    rec_ignore_exp = 'r' if ignore_exp == 'r' else None
+    
+    # Optional matching: any compatible pair works
+    if isinstance(x, OptionalType) or isinstance(y, OptionalType):
+        x_options = x.types if isinstance(x, OptionalType) else [x]
+        y_options = y.types if isinstance(y, OptionalType) else [y]
+        
+        for x_option in x_options:
+            for y_option in y_options:
+                if semtype_match(x_option, y_option, ignore_exp=rec_ignore_exp):
+                    return True
         return False
-    return entry is True or entry == "true"
+    
+    # Suffixes: only constrain when both are specified
+    if x.suffix is not None and y.suffix is not None and x.suffix != y.suffix:
+        return False
+    
+    x_sf = x.synfeats if x.synfeats is not None else SyntacticFeatures()
+    y_sf = y.synfeats if y.synfeats is not None else SyntacticFeatures()
+    if not y_sf.match(x_sf):
+        return False
+    
+    # Atomic case
+    if isinstance(x, AtomicType) or isinstance(y, AtomicType):
+        return (
+            isinstance(x, AtomicType)
+            and isinstance(y, AtomicType)
+            and x.name == y.name
+        )
+    
+    # Structured case
+    if not semtype_match(x.domain, y.domain, ignore_exp=ignore_exp):
+        return False
+    if not semtype_match(x.range, y.range, ignore_exp=ignore_exp):
+        return False
+    if x.connective != y.connective:
+        return False
+    
+    # Special >> constraint: synfeat differences between domain/range must agree
+    if x.connective == '>>' and not _right_arrow_synfeats_match(x, y):
+        return False
+    
+    return True
