@@ -690,8 +690,13 @@ def semtype_match(
         ignore_exp: 
             Controls exponent-sensitive matching.
             - ``None`` or ``False``: unroll one exponent step before matching.
-            - ``True``: ignore exponent differences at the current level.
-            - ``'r'``: ignore exponent differences recursively.
+            - ``True``: ignore exponent differences during ordinary recursive matching
+                        through normal semtype structure.
+            - ``'r'``: like ``True``, and also preserve exponent-ignoring behavior when
+                       recursing through ``OptionalType`` branches.
+                       
+            In other words, ``'r'`` only differs from ``True`` for recursion through
+            optionals; for ordinary domain/range recursion, ``True`` already propagates.
             
     Returns:
         ``True`` if ``value`` matches ``pattern``, otherwise ``False``.
