@@ -81,7 +81,7 @@ class SemType:
     range: "SemType" | None = None
     ex: int = 1
     suffix: str | None = None
-    type_params: list['SemType | None'] = field(default_factory=list)
+    type_params: list['SemType'] = field(default_factory=list)
     synfeats: SyntacticFeatures = field(default_factory=lambda: DEFAULT_SYNTACTIC_FEATURES.copy())
     
     
@@ -132,6 +132,8 @@ def semtype2str(st: SemType | None) -> str | None:
     if st.type_params:
         rendered_params = []
         for tp in st.type_params:
+            if tp is None:
+                raise ValueError("type_params must not contain None")
             s = semtype2str(tp)
             if s is not None:
                 rendered_params.append(s)
@@ -351,12 +353,20 @@ class SemTypeParser:
                 
         return SyntacticFeatures(feature_map=feat_map)
     
-    def _parse_type_params(self) -> list[SemType | None]:
+    def _parse_type_params(self) -> list[SemType]:
         self._expect('[')
-        params = [self._parse_type()]
+        
+        first = self._parse_type()
+        if first is None:
+            raise self._error("NIL is not allowed in type parameters.")
+        params: list[SemType] = [first]
+        
         while self._peek() == ';':
             self._advance()
-            params.append(self._parse_type())
+            param = self._parse_type()
+            if param is None:
+                raise self._error("NIL is not allowed in type parameters.")
+            params.append(param)
         self._expect(']')
         
         return params
