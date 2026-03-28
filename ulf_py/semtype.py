@@ -121,12 +121,6 @@ def _synfeats_str(sf: SyntacticFeatures | None) -> str:
     if not vals:
         return ""
     return "%" + ",".join(vals)
-    
-    
-def _type_params_str(tp: list['SemType'] | None) -> str:
-    if not tp:
-        return ""
-    return "[" + ",".join(semtype2str(t) for t in tp) + "]"
 
 def semtype2str(st: SemType | None) -> str | None:
     """Convert a SemType tree back to its Lisp-style string representation."""
