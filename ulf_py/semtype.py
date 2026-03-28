@@ -320,12 +320,18 @@ class SemTypeParser:
     
     def _parse_exponent(self) -> int:
         start = self.pos
-        token = self._consume_while(str.isalnum)
+        token = self._consume_while(lambda ch: ch.isdigit() or ch.lower() == 'n')
         
         if not token:
             raise self._error(f"Expected exponent at pos {start}")
         
-        return -1 if token.lower() == 'n' else int(token)
+        if token.lower() == 'n':
+            return -1
+        
+        if not token.isdigit():
+            raise self._error(f"Expected numeric exponent or 'n' at pos {start}")
+        
+        return int(token)
     
     def _parse_suffix(self) -> str:
         start = self.pos
