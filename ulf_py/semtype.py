@@ -103,6 +103,30 @@ class OptionalType(SemType):
     """
     types: list[SemType | None] = field(default_factory=list)      # {A | B | C}
     
+
+_EXTENDED_ATOMIC_TYPES = {
+    "QT-ATTR1",
+    "QT-ATTR2",
+    "SUB1",
+    "REP1",
+    "POSTGEN1",
+    "POSTGEN2",
+    "+PREDS",
+}
+
+_MACRO_HOLE_RE = re.compile(r"^\*[A-Z][A-Z0-9-]*$")
+
+
+@dataclass(slots=True)
+class _PendingOutSynfeat:
+    """
+    Internal placeholder for a parsed `%>` expression before it is converted
+    into ordinary `>>` semtypes.
+    """
+    antecedent: SemType | None
+    new_synfeats: SyntacticFeatures
+    type_params: list[SemType] = field(default_factory=list)
+
     
 # ==================================================
 # semtype2str - reconstruct the string from a SemType tree
