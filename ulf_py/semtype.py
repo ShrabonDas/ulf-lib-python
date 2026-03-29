@@ -261,7 +261,7 @@ class SemTypeParser:
             self.pos += 1
         return self.s[start:self.pos]
     
-    def parse(self) -> SemType | None:
+    def parse(self) -> SemType | _PendingOutSynfeat | None:
         result = self._parse_type()
         if self.pos != len(self.s):
             raise self._error(
@@ -270,10 +270,10 @@ class SemTypeParser:
         
         return result
         
-    def _parse_type(self) -> SemType | None:
+    def _parse_type(self) -> SemType | _PendingOutSynfeat | None:
         return self._parse_modifiers(self._parse_primary())
     
-    def _parse_primary(self) -> SemType | None:
+    def _parse_primary(self) -> SemType | _PendingOutSynfeat | None:
         c = self._peek()
         
         if c == '(':
@@ -299,14 +299,30 @@ class SemTypeParser:
         
         return None if token.upper() == 'NIL' else AtomicType(name=token)
     
-    def _parse_function_type(self) -> SemType:
+    def _parse_function_type(self) -> SemType | _PendingOutSynfeat:
         self._expect('(')
         domain = self._parse_type()
         conn = self._parse_connective()
+        
+        if conn == "%>":
+            new_synfeats = self._parse_out_synfeat_rhs()
+            self._expect(')')
+            return _PendingOutSynfeat(
+                antecedent=domain,
+                new_synfeats=new_synfeats,
+            )
+        
         range_ = self._parse_type()
         self._expect(')')
         
         return SemType(connective=conn, domain=domain, range=range_)
+    
+    def _parse_out_synfeat_rhs(self) -> SyntacticFeatures:
+        """
+        Parse RHS of `%>`, which is a bare syntactic-feature specification
+        rather than a full semtype.
+        """
+        return self._parse_features()
     
     def _parse_optional_type(self) -> OptionalType:
         self._expect('{')
@@ -328,12 +344,23 @@ class SemTypeParser:
         
         raise self._error(f"Expected connective at pos {self.pos}")
     
-    def _parse_modifiers(self, base: SemType | None) -> SemType | None:
+    def _parse_modifiers(self, base: SemType | _PendingOutSynfeat | None) -> SemType | _PendingOutSynfeat | None:
         if base is None:
             return None
         
         while True:
             c = self._peek()
+            
+            if isinstance(base, _PendingOutSynfeat):
+                if c == '[':
+                    base.type_params = self._parse_type_params()
+                    continue
+                if c in {'^', '_', '%'}:
+                    raise self._error(
+                        "`%>` expressions cannot have top-level suffixes, synfeats, or exponents"
+                    )
+                break
+            
             if c == '^':
                 self._advance()
                 base.ex = self._parse_exponent()
