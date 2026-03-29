@@ -56,6 +56,9 @@ Connective = Literal['=>', '>>', "%>"]
 CONNECTIVES = Connective.__args__
 
 SEMTYPE_MAX_EXPONENT = 3
+# TODO: if this value becomes configurable at runtime, add a clear reload/update
+# path for any cached or precomputed dependent state so the change 
+# propagates consistently.
 
 # ==================================================
 # Data Classes

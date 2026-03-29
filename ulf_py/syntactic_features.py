@@ -1,6 +1,9 @@
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
+# TODO: verify whether feature values like '*h' and '*p' should support
+# duplicates or explicit counts, and update the internal representation if needed.
+
 from .feature_definition_declarations import (
     SYNTACTIC_FEATURE_VALUES,
     FEATURE_DEFINITIONS_DICT,
