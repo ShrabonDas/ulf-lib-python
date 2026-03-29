@@ -210,9 +210,10 @@ class SemTypeParser:
     ATOM_CHARS = set(string.ascii_letters + string.digits + '+*-')
     FEAT_STOP = set(',|})^_[]=>(')
     
-    def __init__(self, s: str):
+    def __init__(self, s: str, *, allow_extended_atoms: bool = False):
         self.s = s
         self.pos = 0
+        self.allow_extended_atoms = allow_extended_atoms
         
     def _error(self, msg: str) -> SemTypeParseError:
         return SemTypeParseError(msg, pos=self.pos, input_str=self.s)
@@ -250,11 +251,16 @@ class SemTypeParser:
     
     def _parse_primary(self) -> SemType | None:
         c = self._peek()
+        
         if c == '(':
             return self._parse_function_type()
         
         if c == '{':
             return self._parse_optional_type()
+        
+        if self.allow_extended_atoms and c == '"':
+            self._advance()
+            return AtomicType(name='"')
         
         if c is not None and c in self.ATOM_CHARS:
             return self._parse_atom()
