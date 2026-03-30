@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
+from itertools import product
 from typing import Literal, Any, Sequence
 from .syntactic_features import SyntacticFeatures, DEFAULT_SYNTACTIC_FEATURES, lookup_feature_name
 from .feature_definition_declarations import FEATURE_DEFINITIONS_DICT
@@ -694,6 +695,85 @@ def str2semtype(s: str) -> SemType | None:
 def new_optional_semtype(options: Sequence[SemType | None]) -> OptionalType:
     """Create an optional type from a list of type options."""
     return OptionalType(types=list(options))
+
+def flatten_type_params(st: SemType) -> SemType | OptionalType:
+    """
+    Flatten the type parameters of a semtype into explicit alternatives.
+    
+    If any type parameter has multiple flattened possibilities, this returns an
+    OptionalType containing one copy of ``st`` for each cartesian-product
+    combination of type-parameter choices. If there is only one combination,
+    the single semtype is returned directly.
+    """
+    choice_lists: list[list[SemType | None]] = []
+    
+    for tp in st.type_params:
+        flat_tp = flatten_options(tp)
+        if flat_tp is None:
+            raise ValueError("type_params must flatten to one or more semtypes")
+        choice_lists.append(list(flat_tp.types))
+        
+    all_choices = list(product(*choice_lists))
+    new_options = [
+        copy_semtype(st, c_type_params=list(choice))
+        for choice in all_choices
+    ]
+    
+    if len(new_options) == 1:
+        return new_options[0]
+    return new_optional_semtype(new_options)
+        
+def flatten_options(raw_st: SemType | None) -> OptionalType | None:
+    """
+    Flatten a semtype so that all options and concrete exponents are represented
+    with a single top-level OptionalType.
+    
+    This always returns an OptionalType when a non-empty result exists, even if
+    there is only one option. Returns None when the flattened semtype is empty,
+    for example for exponent 0.
+    """
+    st = unroll_exponent_step(raw_st)
+    if st is None:
+        return None
+    
+    if st.type_params:
+        st = flatten_type_params(st)
+        
+    if st.ex == 0:
+        return None
+    
+    if isinstance(st, OptionalType):
+        new_options: list[SemType | None] = []
+        for opt in st.types:
+            flat_opt = flatten_options(opt)
+            if flat_opt is not None:
+                new_options.extend(flat_opt.types)
+        return new_optional_semtype(new_options) if new_options else None
+    
+    if isinstance(st, AtomicType):
+        return new_optional_semtype([copy_semtype(st)])
+        
+    flat_dom = flatten_options(st.domain)
+    flat_ran = flatten_options(st.range)
+    
+    if flat_dom is None:
+        new_options = list(flat_ran.types) if flat_ran is not None else []
+    elif flat_ran is None:
+        new_options = list(flat_dom.types)
+    else:
+        new_options = [
+            copy_semtype(st, c_domain=cur_dom, c_range=cur_ran)
+            for cur_dom in flat_dom.types
+            for cur_ran in flat_ran.types
+        ]
+    
+    return new_optional_semtype(new_options) if new_options else None
+
+def binarize_flat_options(st: OptionalType) -> OptionalType:
+    """
+    Convert a flat optional type into a right-leaning binary tree of options.
+    """
+    return _binarize_options(list(st.types))
 
 def _synfeat_diff_for_right_arrow(st: SemType) -> tuple[SyntacticFeatures, SyntacticFeatures]:
     """
