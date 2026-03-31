@@ -378,6 +378,13 @@ class SemTypeParser:
             else:
                 break
             
+        if isinstance(base, _PendingOutSynfeat):
+            return process_out_synfeat_connective(
+                base.antecedent,
+                base.new_synfeats,
+                base.type_params,
+            )
+        
         return base
     
     def _parse_exponent(self) -> int:
@@ -685,6 +692,56 @@ def unroll_exponent_step(st: SemType | None) -> SemType | None:
 # ==================================================
 # Public API
 # ==================================================
+
+def process_out_synfeat_connective(
+    base_semtype: SemType | None,
+    new_synfeats: SyntacticFeatures,
+    type_params: Sequence[SemType] | None = None,
+) -> OptionalType | None:
+    """
+    Process the `%>` shorthand.
+    
+    Lisp semantics:
+        A%>S => {a1>>a1%S | a2>>a2%S | ...}
+        
+    where a1, a2, ... are the flattened alternatives of A.
+    """
+    flat_base = flatten_options(base_semtype)
+    if flat_base is None:
+        return None
+    
+    copied_type_params = [copy_semtype(tp) for tp in (type_params or [])]
+    new_types: list[SemType | None] = []
+    
+    for st in flat_base.types:
+        if st is None:
+            continue
+        
+        consequent = copy_semtype(
+            st,
+            c_synfeats=DEFAULT_SYNTACTIC_FEATURES.copy(),
+        )
+        if consequent is None:
+            continue
+        
+        consequent.synfeats.update_syntactic_features(new_synfeats)
+        
+        new_types.append(
+            SemType(
+                connective=">>",
+                domain=copy_semtype(st),
+                range=consequent,
+                type_params=[copy_semtype(tp) for tp in copied_type_params],
+                synfeats=DEFAULT_SYNTACTIC_FEATURES.copy()
+            )
+        )
+        
+    if not new_types:
+        return None
+    
+    return binarize_flat_options(new_optional_semtype(new_types))
+        
+        
 
 def str2semtype(s: str) -> SemType | None:
     """Parse a string into a SemType object using the recursive descent parser."""
