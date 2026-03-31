@@ -105,6 +105,8 @@ class OptionalType(SemType):
     types: list[SemType | None] = field(default_factory=list)      # {A | B | C}
     
 
+# Mirrors Lisp lex-macro? / lex-macro-hole? from ttt-lexical-patterns.lisp.
+# Keep local for now because they are only used by extended semtype parsing.
 _EXTENDED_ATOMIC_TYPES = {
     "QT-ATTR1",
     "QT-ATTR2",
@@ -115,7 +117,30 @@ _EXTENDED_ATOMIC_TYPES = {
     "+PREDS",
 }
 
-_MACRO_HOLE_RE = re.compile(r"^\*[A-Z][A-Z0-9-]*$")
+_LEX_MACROS = {
+    "QT-ATTR",
+    "SUB",
+    "REP",
+    "N+PREDS",
+    "NP+PREDS",
+    "VOC",
+    "VOC-O"
+}
+
+_LEX_MACRO_HOLES = {
+    "*H",
+    "*P",
+    "*QT",
+    "*S",
+    "*REF",
+}
+
+_EXTENDED_TOP_LEVEL_ATOMS = (
+    {"PARG", '"'}
+    | _LEX_MACROS
+    | _EXTENDED_ATOMIC_TYPES
+    | _LEX_MACRO_HOLES
+)
 
 
 @dataclass(slots=True)
@@ -743,9 +768,31 @@ def process_out_synfeat_connective(
         
         
 
-def str2semtype(s: str) -> SemType | None:
-    """Parse a string into a SemType object using the recursive descent parser."""
-    parsed = SemTypeParser(s).parse()
+def str2semtype(s: str, *, extended: bool = False) -> SemType | None:
+    """
+    Parse a string into a SemType object using the recursive descent parser.
+    
+    When extended=True, also support the Lisp extended parse cases such as
+    PARG, ", explicit extended atoms, and macro-hole variables.
+    """
+    stripped = s.strip()
+    if not stripped:
+        raise SemTypeParseError("Empty semtype string", pos=0, input_str=s)
+    
+    if extended:
+        upper = stripped.upper()
+        
+        if upper in _EXTENDED_TOP_LEVEL_ATOMS:
+            return AtomicType(name=upper)
+        
+        parsed = SemTypeParser(
+            upper,
+            allow_extended_atoms=True,
+        ).parse()
+        
+    else:
+        parsed = SemTypeParser(stripped).parse()
+        
     expanded = expand_variable_exponents(parsed)
     return expanded
 
