@@ -6,7 +6,10 @@ from ulf_py import semtype_match, str2semtype
 
 def match_str(pattern: str, value: str) -> bool:
     """Return whether the semtype parsed from value matches the parsed pattern."""
-    return semtype_match(str2semtype(pattern), str2semtype(value))
+    return semtype_match(
+        str2semtype(pattern, extended=True), 
+        str2semtype(value, extended=True)
+    )
 
 
 @pytest.mark.parametrize(
