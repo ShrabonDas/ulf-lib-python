@@ -879,6 +879,86 @@ def binarize_flat_options(st: OptionalType) -> OptionalType:
     """
     return _binarize_options(list(st.types))
 
+def semtype_equal(s1: SemType | None, s2: SemType | None) -> bool:
+    """
+    Determine whether two semtypes are exactly equivalent.
+    
+    Unlike ``semtype_match``, equality is exact: syntactic features must match
+    exactly, options are compared as sets ignoring order, and duplicate
+    flattened branches are ignored.
+    """
+    
+    def set_no_option_equal(
+        set1: Sequence[SemType | None],
+        set2: Sequence[SemType | None],
+    ) -> bool:
+        return (
+            len(set1) == len(set2)
+            and all(
+                any(no_option_equal(set1_elem, set2_elem) for set2_elem in set2)
+                for set1_elem in set1
+            )
+        )
+    
+    def same_metadata(t1: SemType, t2: SemType) -> bool:
+        return (
+            t1.suffix == t2.suffix
+            and t1.synfeats.equal(t2.synfeats)
+            and set_no_option_equal(t1.type_params, t2.type_params)
+        )
+    
+    def no_option_equal(
+        raw_t1: SemType | None,
+        raw_t2: SemType | None,
+    ) -> bool:
+        t1 = unroll_exponent_step(raw_t1)
+        t2 = unroll_exponent_step(raw_t2)
+        
+        if t1 is None or t2 is None:
+            return t1 is None and t2 is None
+        
+        if isinstance(t1, OptionalType) or isinstance(t2, OptionalType):
+            raise ValueError("no_option_equal does not allow OptionalType inputs")
+        
+        t1_is_atomic = isinstance(t1, AtomicType)
+        t2_is_atomic = isinstance(t2, AtomicType)
+        
+        if t1_is_atomic != t2_is_atomic:
+            return False
+        
+        if t1_is_atomic:
+            return (
+                t1.name == t2.name
+                and same_metadata(t1, t2)
+            )
+        
+        return (
+            no_option_equal(t1.domain, t2.domain)
+            and no_option_equal(t1.range, t2.range)
+            and t1.connective == t2.connective
+            and same_metadata(t1, t2)
+        )
+    
+    def dedupe_flat_options(
+        options: Sequence[SemType | None],
+    ) -> list[SemType | None]:
+        unique: list[SemType | None] = []
+        for option in options:
+            if not any(no_option_equal(option, existing) for existing in unique):
+                unique.append(option)
+        return unique
+    
+    if s1 is None or s2 is None:
+        return s1 is None and s2 is None
+    
+    flat_s1 = flatten_options(s1)
+    flat_s2 = flatten_options(s2)
+    
+    flat_types_1 = dedupe_flat_options(list(flat_s1.types) if flat_s1 is not None else [])
+    flat_types_2 = dedupe_flat_options(list(flat_s2.types) if flat_s2 is not None else [])
+    
+    return set_no_option_equal(flat_types_1, flat_types_2)
+
 def _synfeat_diff_for_right_arrow(st: SemType) -> tuple[SyntacticFeatures, SyntacticFeatures]:
     """
     Keep only features that are specified on both domain and range and differ.
