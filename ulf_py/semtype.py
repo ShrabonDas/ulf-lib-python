@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
+from itertools import product
 from typing import Literal, Any, Sequence
 from .syntactic_features import SyntacticFeatures, DEFAULT_SYNTACTIC_FEATURES, lookup_feature_name
 from .feature_definition_declarations import FEATURE_DEFINITIONS_DICT
@@ -103,6 +104,55 @@ class OptionalType(SemType):
     """
     types: list[SemType | None] = field(default_factory=list)      # {A | B | C}
     
+
+# Mirrors Lisp lex-macro? / lex-macro-hole? from ttt-lexical-patterns.lisp.
+# Keep local for now because they are only used by extended semtype parsing.
+_EXTENDED_ATOMIC_TYPES = {
+    "QT-ATTR1",
+    "QT-ATTR2",
+    "SUB1",
+    "REP1",
+    "POSTGEN1",
+    "POSTGEN2",
+    "+PREDS",
+}
+
+_LEX_MACROS = {
+    "QT-ATTR",
+    "SUB",
+    "REP",
+    "N+PREDS",
+    "NP+PREDS",
+    "VOC",
+    "VOC-O"
+}
+
+_LEX_MACRO_HOLES = {
+    "*H",
+    "*P",
+    "*QT",
+    "*S",
+    "*REF",
+}
+
+_EXTENDED_TOP_LEVEL_ATOMS = (
+    {"PARG", '"'}
+    | _LEX_MACROS
+    | _EXTENDED_ATOMIC_TYPES
+    | _LEX_MACRO_HOLES
+)
+
+
+@dataclass(slots=True)
+class _PendingOutSynfeat:
+    """
+    Internal placeholder for a parsed `%>` expression before it is converted
+    into ordinary `>>` semtypes.
+    """
+    antecedent: SemType | None
+    new_synfeats: SyntacticFeatures
+    type_params: list[SemType] = field(default_factory=list)
+
     
 # ==================================================
 # semtype2str - reconstruct the string from a SemType tree
@@ -210,9 +260,10 @@ class SemTypeParser:
     ATOM_CHARS = set(string.ascii_letters + string.digits + '+*-')
     FEAT_STOP = set(',|})^_[]=>(')
     
-    def __init__(self, s: str):
+    def __init__(self, s: str, *, allow_extended_atoms: bool = False):
         self.s = s
         self.pos = 0
+        self.allow_extended_atoms = allow_extended_atoms
         
     def _error(self, msg: str) -> SemTypeParseError:
         return SemTypeParseError(msg, pos=self.pos, input_str=self.s)
@@ -236,7 +287,7 @@ class SemTypeParser:
             self.pos += 1
         return self.s[start:self.pos]
     
-    def parse(self) -> SemType | None:
+    def parse(self) -> SemType | _PendingOutSynfeat | None:
         result = self._parse_type()
         if self.pos != len(self.s):
             raise self._error(
@@ -245,16 +296,21 @@ class SemTypeParser:
         
         return result
         
-    def _parse_type(self) -> SemType | None:
+    def _parse_type(self) -> SemType | _PendingOutSynfeat | None:
         return self._parse_modifiers(self._parse_primary())
     
-    def _parse_primary(self) -> SemType | None:
+    def _parse_primary(self) -> SemType | _PendingOutSynfeat | None:
         c = self._peek()
+        
         if c == '(':
             return self._parse_function_type()
         
         if c == '{':
             return self._parse_optional_type()
+        
+        if self.allow_extended_atoms and c == '"':
+            self._advance()
+            return AtomicType(name='"')
         
         if c is not None and c in self.ATOM_CHARS:
             return self._parse_atom()
@@ -269,14 +325,30 @@ class SemTypeParser:
         
         return None if token.upper() == 'NIL' else AtomicType(name=token)
     
-    def _parse_function_type(self) -> SemType:
+    def _parse_function_type(self) -> SemType | _PendingOutSynfeat:
         self._expect('(')
         domain = self._parse_type()
         conn = self._parse_connective()
+        
+        if conn == "%>":
+            new_synfeats = self._parse_out_synfeat_rhs()
+            self._expect(')')
+            return _PendingOutSynfeat(
+                antecedent=domain,
+                new_synfeats=new_synfeats,
+            )
+        
         range_ = self._parse_type()
         self._expect(')')
         
         return SemType(connective=conn, domain=domain, range=range_)
+    
+    def _parse_out_synfeat_rhs(self) -> SyntacticFeatures:
+        """
+        Parse RHS of `%>`, which is a bare syntactic-feature specification
+        rather than a full semtype.
+        """
+        return self._parse_features()
     
     def _parse_optional_type(self) -> OptionalType:
         self._expect('{')
@@ -298,12 +370,23 @@ class SemTypeParser:
         
         raise self._error(f"Expected connective at pos {self.pos}")
     
-    def _parse_modifiers(self, base: SemType | None) -> SemType | None:
+    def _parse_modifiers(self, base: SemType | _PendingOutSynfeat | None) -> SemType | _PendingOutSynfeat | None:
         if base is None:
             return None
         
         while True:
             c = self._peek()
+            
+            if isinstance(base, _PendingOutSynfeat):
+                if c == '[':
+                    base.type_params = self._parse_type_params()
+                    continue
+                if c in {'^', '_', '%'}:
+                    raise self._error(
+                        "`%>` expressions cannot have top-level suffixes, synfeats, or exponents"
+                    )
+                break
+            
             if c == '^':
                 self._advance()
                 base.ex = self._parse_exponent()
@@ -320,6 +403,13 @@ class SemTypeParser:
             else:
                 break
             
+        if isinstance(base, _PendingOutSynfeat):
+            return process_out_synfeat_connective(
+                base.antecedent,
+                base.new_synfeats,
+                base.type_params,
+            )
+        
         return base
     
     def _parse_exponent(self) -> int:
@@ -628,15 +718,246 @@ def unroll_exponent_step(st: SemType | None) -> SemType | None:
 # Public API
 # ==================================================
 
-def str2semtype(s: str) -> SemType | None:
-    """Parse a string into a SemType object using the recursive descent parser."""
-    parsed = SemTypeParser(s).parse()
+def process_out_synfeat_connective(
+    base_semtype: SemType | None,
+    new_synfeats: SyntacticFeatures,
+    type_params: Sequence[SemType] | None = None,
+) -> OptionalType | None:
+    """
+    Process the `%>` shorthand.
+    
+    Lisp semantics:
+        A%>S => {a1>>a1%S | a2>>a2%S | ...}
+        
+    where a1, a2, ... are the flattened alternatives of A.
+    """
+    flat_base = flatten_options(base_semtype)
+    if flat_base is None:
+        return None
+    
+    copied_type_params = [copy_semtype(tp) for tp in (type_params or [])]
+    new_types: list[SemType | None] = []
+    
+    for st in flat_base.types:
+        if st is None:
+            continue
+        
+        consequent = copy_semtype(
+            st,
+            c_synfeats=DEFAULT_SYNTACTIC_FEATURES.copy(),
+        )
+        if consequent is None:
+            continue
+        
+        consequent.synfeats.update_syntactic_features(new_synfeats)
+        
+        new_types.append(
+            SemType(
+                connective=">>",
+                domain=copy_semtype(st),
+                range=consequent,
+                type_params=[copy_semtype(tp) for tp in copied_type_params],
+                synfeats=DEFAULT_SYNTACTIC_FEATURES.copy()
+            )
+        )
+        
+    if not new_types:
+        return None
+    
+    return binarize_flat_options(new_optional_semtype(new_types))
+        
+        
+
+def str2semtype(s: str, *, extended: bool = False) -> SemType | None:
+    """
+    Parse a string into a SemType object using the recursive descent parser.
+    
+    When extended=True, also support the Lisp extended parse cases such as
+    PARG, ", explicit extended atoms, and macro-hole variables.
+    """
+    stripped = s.strip()
+    if not stripped:
+        raise SemTypeParseError("Empty semtype string", pos=0, input_str=s)
+    
+    if extended:
+        upper = stripped.upper()
+        
+        if upper in _EXTENDED_TOP_LEVEL_ATOMS:
+            return AtomicType(name=upper)
+        
+        parsed = SemTypeParser(
+            upper,
+            allow_extended_atoms=True,
+        ).parse()
+        
+    else:
+        parsed = SemTypeParser(stripped).parse()
+        
     expanded = expand_variable_exponents(parsed)
     return expanded
 
 def new_optional_semtype(options: Sequence[SemType | None]) -> OptionalType:
     """Create an optional type from a list of type options."""
     return OptionalType(types=list(options))
+
+def flatten_type_params(st: SemType) -> SemType | OptionalType:
+    """
+    Flatten the type parameters of a semtype into explicit alternatives.
+    
+    If any type parameter has multiple flattened possibilities, this returns an
+    OptionalType containing one copy of ``st`` for each cartesian-product
+    combination of type-parameter choices. If there is only one combination,
+    the single semtype is returned directly.
+    """
+    choice_lists: list[list[SemType | None]] = []
+    
+    for tp in st.type_params:
+        flat_tp = flatten_options(tp)
+        if flat_tp is None:
+            raise ValueError("type_params must flatten to one or more semtypes")
+        choice_lists.append(list(flat_tp.types))
+        
+    all_choices = list(product(*choice_lists))
+    new_options = [
+        copy_semtype(st, c_type_params=list(choice))
+        for choice in all_choices
+    ]
+    
+    if len(new_options) == 1:
+        return new_options[0]
+    return new_optional_semtype(new_options)
+        
+def flatten_options(raw_st: SemType | None) -> OptionalType | None:
+    """
+    Flatten a semtype so that all options and concrete exponents are represented
+    with a single top-level OptionalType.
+    
+    This always returns an OptionalType when a non-empty result exists, even if
+    there is only one option. Returns None when the flattened semtype is empty,
+    for example for exponent 0.
+    """
+    st = unroll_exponent_step(raw_st)
+    if st is None:
+        return None
+    
+    if st.type_params:
+        st = flatten_type_params(st)
+        
+    if st.ex == 0:
+        return None
+    
+    if isinstance(st, OptionalType):
+        new_options: list[SemType | None] = []
+        for opt in st.types:
+            flat_opt = flatten_options(opt)
+            if flat_opt is not None:
+                new_options.extend(flat_opt.types)
+        return new_optional_semtype(new_options) if new_options else None
+    
+    if isinstance(st, AtomicType):
+        return new_optional_semtype([copy_semtype(st)])
+        
+    flat_dom = flatten_options(st.domain)
+    flat_ran = flatten_options(st.range)
+    
+    if flat_dom is None:
+        new_options = list(flat_ran.types) if flat_ran is not None else []
+    elif flat_ran is None:
+        new_options = list(flat_dom.types)
+    else:
+        new_options = [
+            copy_semtype(st, c_domain=cur_dom, c_range=cur_ran)
+            for cur_dom in flat_dom.types
+            for cur_ran in flat_ran.types
+        ]
+    
+    return new_optional_semtype(new_options) if new_options else None
+
+def binarize_flat_options(st: OptionalType) -> OptionalType:
+    """
+    Convert a flat optional type into a right-leaning binary tree of options.
+    """
+    return _binarize_options(list(st.types))
+
+def semtype_equal(s1: SemType | None, s2: SemType | None) -> bool:
+    """
+    Determine whether two semtypes are exactly equivalent.
+    
+    Unlike ``semtype_match``, equality is exact: syntactic features must match
+    exactly, options are compared as sets ignoring order, and duplicate
+    flattened branches are ignored.
+    """
+    
+    def set_no_option_equal(
+        set1: Sequence[SemType | None],
+        set2: Sequence[SemType | None],
+    ) -> bool:
+        return (
+            len(set1) == len(set2)
+            and all(
+                any(no_option_equal(set1_elem, set2_elem) for set2_elem in set2)
+                for set1_elem in set1
+            )
+        )
+    
+    def same_metadata(t1: SemType, t2: SemType) -> bool:
+        return (
+            t1.suffix == t2.suffix
+            and t1.synfeats.equal(t2.synfeats)
+            and set_no_option_equal(t1.type_params, t2.type_params)
+        )
+    
+    def no_option_equal(
+        raw_t1: SemType | None,
+        raw_t2: SemType | None,
+    ) -> bool:
+        t1 = unroll_exponent_step(raw_t1)
+        t2 = unroll_exponent_step(raw_t2)
+        
+        if t1 is None or t2 is None:
+            return t1 is None and t2 is None
+        
+        if isinstance(t1, OptionalType) or isinstance(t2, OptionalType):
+            raise ValueError("no_option_equal does not allow OptionalType inputs")
+        
+        t1_is_atomic = isinstance(t1, AtomicType)
+        t2_is_atomic = isinstance(t2, AtomicType)
+        
+        if t1_is_atomic != t2_is_atomic:
+            return False
+        
+        if t1_is_atomic:
+            return (
+                t1.name == t2.name
+                and same_metadata(t1, t2)
+            )
+        
+        return (
+            no_option_equal(t1.domain, t2.domain)
+            and no_option_equal(t1.range, t2.range)
+            and t1.connective == t2.connective
+            and same_metadata(t1, t2)
+        )
+    
+    def dedupe_flat_options(
+        options: Sequence[SemType | None],
+    ) -> list[SemType | None]:
+        unique: list[SemType | None] = []
+        for option in options:
+            if not any(no_option_equal(option, existing) for existing in unique):
+                unique.append(option)
+        return unique
+    
+    if s1 is None or s2 is None:
+        return s1 is None and s2 is None
+    
+    flat_s1 = flatten_options(s1)
+    flat_s2 = flatten_options(s2)
+    
+    flat_types_1 = dedupe_flat_options(list(flat_s1.types) if flat_s1 is not None else [])
+    flat_types_2 = dedupe_flat_options(list(flat_s2.types) if flat_s2 is not None else [])
+    
+    return set_no_option_equal(flat_types_1, flat_types_2)
 
 def _synfeat_diff_for_right_arrow(st: SemType) -> tuple[SyntacticFeatures, SyntacticFeatures]:
     """

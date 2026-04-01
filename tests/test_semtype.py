@@ -6,7 +6,17 @@ from ulf_py import semtype_match, str2semtype
 
 def match_str(pattern: str, value: str) -> bool:
     """Return whether the semtype parsed from value matches the parsed pattern."""
-    return semtype_match(str2semtype(pattern), str2semtype(value))
+    return semtype_match(
+        str2semtype(pattern, extended=True), 
+        str2semtype(value, extended=True)
+    )
+
+def equal_str(left: str, right: str) -> bool:
+    """Return whether two semtype strings are equal under semtype_equal."""
+    return semtype_module.semtype_equal(
+        str2semtype(left, extended=True),
+        str2semtype(right, extended=True),
+    )
 
 
 @pytest.mark.parametrize(
@@ -82,3 +92,30 @@ def test_optional_semtype_match_with_custom_max_exponent(monkeypatch: pytest.Mon
     """Expand variable exponents using the configured maximum exponent bound."""
     monkeypatch.setattr(semtype_module, "SEMTYPE_MAX_EXPONENT", 4)
     assert match_str("({D|2}^n=>S)", "(D=>(D=>(D=>(D=>S))))")
+    
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        ("D", "D"),
+        ("(D=>D)", "(D=>D)"),
+        ("(D=>D)_V", "(D=>D)_V"),
+        ("(D=>D)%T", "(D=>D)%T"),
+    ]
+)
+def test_basic_semtype_equal_positive(left: str, right: str) -> None:
+    """Accept semtypes that are equal under exact semtype equality."""
+    assert equal_str(left, right)
+    
+    
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        ("(D=>D)", "(D=>D)_V"),
+        ("(D=>D)", "(D=>D)%T,X"),
+        ("(D=>D)%T,X", "(D=>D)")
+    ]
+)
+def test_basic_semtype_equal_negative(left: str, right: str) -> None:
+    """Reject semtypes that differ by suffix or exact syntactic features."""
+    assert not equal_str(left, right)
