@@ -2,11 +2,8 @@ from __future__ import annotations
 
 from .semtype import (
     AtomicType, SemType, OptionalType, 
-    ULF_MAPS, _normalize_synfeats_order, _normalize_whitespace,
-    copy_semtype, semtype2str, str2semtype,
-    semtype_match, unroll_exponent_step,
+    copy_semtype, semtype_match, unroll_exponent_step,
 )
-from .lisp_keys import make_lisp_lookup_key
 
 
 def _first_pos_suffix(suffix: str | None) -> str | None:
@@ -153,31 +150,6 @@ def apply_operator(
     return result
 
 
-def _oracle_compose_types(
-    opr_semtype: SemType | None,
-    arg_semtype: SemType | None,
-    ignore_synfeats: bool = True,
-    opr_apply_fn_name: str = 'APPLY-OPERATOR!',
-) -> SemType | None:
-    """Look up a precomputed composition result in the oracle data."""
-    if opr_semtype is None or arg_semtype is None:
-        return None
-    opr_str = semtype2str(opr_semtype)
-    arg_str = semtype2str(arg_semtype)
-    if opr_str is None or arg_str is None:
-        return None
-    key = make_lisp_lookup_key([opr_str, arg_str,
-                    bool(ignore_synfeats), opr_apply_fn_name])
-    key = _normalize_whitespace(_normalize_synfeats_order(key))
-    entry = ULF_MAPS['compose_types'].get(key)
-    if entry is None:
-        return None
-    composed_str = entry.get('composed')
-    if composed_str is None:
-        return None
-    return str2semtype(composed_str)
-
-
 def compose_types(
     opr_semtype: SemType | None,
     arg_semtype: SemType | None,
@@ -205,10 +177,3 @@ def compose_types(
         
         if composed is not None:
             return composed
-        
-    return _oracle_compose_types(
-        opr_semtype,
-        arg_semtype,
-        ignore_synfeats,
-        opr_apply_fn_name,
-    )
