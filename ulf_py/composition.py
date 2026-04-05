@@ -46,6 +46,36 @@ def _add_semtype_type_params(
     return semtype
 
 
+def compose_synfeats(opr: SemType, arg: SemType):
+    """Compose operator and argument syntactic features."""
+    from .syntactic_features import DEFAULT_SYNTACTIC_FEATURES, SyntacticFeatures
+    
+    if opr.connective == "=>":
+        base_synfeats = opr.synfeats.copy()
+    elif opr.connective == ">>":
+        base_synfeats = arg.synfeats.copy()
+    else:
+        raise ValueError(f"Unknown connective {opr.connective!r} for syntactic feature merge")
+        
+    csq_feats = (
+        opr.range.synfeats.copy()
+        if opr.range is not None and opr.range.synfeats is not None
+        else DEFAULT_SYNTACTIC_FEATURES.copy()
+    )
+    
+    opr_feats = opr.synfeats if opr.synfeats is not None else DEFAULT_SYNTACTIC_FEATURES.copy()
+    arg_feats = arg.synfeats if arg.synfeats is not None else DEFAULT_SYNTACTIC_FEATURES.copy()
+    
+    return SyntacticFeatures.combine_features(
+        base_synfeats,
+        opr_feats,
+        arg_feats,
+        csq_feats,
+        opr,
+        arg,
+    )
+
+
 def _oracle_compose_types(
     opr_semtype: SemType | None,
     arg_semtype: SemType | None,
