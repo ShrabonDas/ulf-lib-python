@@ -1,6 +1,8 @@
 from .semtype import (
-    SemType, OptionalType, ULF_MAPS, 
-    copy_semtype, semtype2str, str2semtype, _normalize_synfeats_order, _normalize_whitespace
+    AtomicType, SemType, OptionalType, 
+    ULF_MAPS, _normalize_synfeats_order, _normalize_whitespace,
+    copy_semtype, semtype2str, str2semtype,
+    semtype_match, unroll_exponent_step,
 )
 from .lisp_keys import make_lisp_lookup_key
 
@@ -74,6 +76,79 @@ def compose_synfeats(opr: SemType, arg: SemType):
         opr,
         arg,
     )
+
+
+def apply_operator(
+    raw_opr: SemType | None,
+    raw_arg: SemType | None,
+    *,
+    recurse_fn=None,
+    ignore_synfeats: bool = False,
+) -> SemType | None:
+    """Apply an operator semtype to an argument semtype."""
+    if raw_opr is None or raw_arg is None:
+        return None
+    
+    if recurse_fn is None:
+        recurse_fn = apply_operator
+        
+    new_params = [
+        copy_semtype(tp)
+        for tp in list(raw_opr.type_params) + list(raw_arg.type_params)
+    ]
+    
+    opr = unroll_exponent_step(raw_opr)
+    arg = unroll_exponent_step(raw_arg)
+    if opr is None or arg is None:
+        return None
+    
+    result: SemType | None = None
+    
+    if isinstance(opr, OptionalType):
+        results = [
+            recurse_fn(opt, arg, recurse_fn=recurse_fn, ignore_synfeats=ignore_synfeats)
+            for opt in opr.types
+        ]
+        present = [res for res in results if res is not None]
+        
+        if not present:
+            result = None
+        elif len(present) == 1:
+            result = present[0]
+        else:
+            result = OptionalType(types=present)
+    elif isinstance(arg, OptionalType):
+        results = [
+            recurse_fn(opr, opt, recurse_fn=recurse_fn, ignore_synfeats=ignore_synfeats)
+            for opt in arg.types
+        ]
+        present = [res for res in results if res is not None]
+        
+        if not present:
+            result = None
+        elif len(present) == 1:
+            result = present[0]
+        else:
+            result = OptionalType(types=present)
+    elif isinstance(opr, AtomicType):
+        if semtype_match(opr, arg) and opr.ex > 1:
+            result = copy_semtype(opr, c_ex=opr.ex - 1)
+    elif (
+        semtype_match(opr.domain, arg)
+        and opr.domain is not None
+        and opr.domain.ex == 1
+    ):
+        result = copy_semtype(opr.range)
+        if result is not None:
+            if not isinstance(result, AtomicType):
+                result.suffix = merge_suffixes(opr, arg)
+            if not ignore_synfeats:
+                result.synfeats = compose_synfeats(opr, arg)
+                
+    if not isinstance(opr, OptionalType) and result is not None:
+        _add_semtype_type_params(result, new_params)
+        
+    return result
 
 
 def _oracle_compose_types(
