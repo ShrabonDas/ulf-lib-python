@@ -26,3 +26,15 @@ def test_auxiliary_compose_matches_lisp_case() -> None:
         str2semtype("(D=>(S=>2))_V%X,!T"),
         result,
     )
+    
+    
+def test_tensed_auxiliary_compose_matches_lisp_case() -> None:
+    """TAUX + untensed auxiliary verb yields a tensed auxiliary verb."""
+    result = compose(
+        "((D=>(S=>2))_V%!T,!X>>(D=>(S=>2))_V%T,X)",
+        "(D=>(S=>2))_V%!T,!X",
+    )
+    assert semtype_match(
+        str2semtype("(D=>(S=>2))_V%T,X"),
+        result,
+    )
