@@ -1,4 +1,7 @@
-from .semtype import SemType, ULF_MAPS, semtype2str, str2semtype, _normalize_synfeats_order, _normalize_whitespace
+from .semtype import (
+    SemType, OptionalType, ULF_MAPS, 
+    copy_semtype, semtype2str, str2semtype, _normalize_synfeats_order, _normalize_whitespace
+)
 from .lisp_keys import make_lisp_lookup_key
 
 
@@ -26,6 +29,21 @@ def merge_suffixes(opr: SemType, arg: SemType) -> str | None:
     if opr.connective == "=>":
         return opr_suffix
     raise ValueError(f"Unknown connective {opr.connective!r} for suffix merge")
+
+
+def _add_semtype_type_params(
+    semtype: SemType | None,
+    type_params: list[SemType],
+) -> SemType | None:
+    """Append type parameters recursively."""
+    if semtype is None:
+        return None
+    if isinstance(semtype, OptionalType):
+        for child in semtype.types:
+            _add_semtype_type_params(child, type_params)
+        return semtype
+    semtype.type_params.extend(copy_semtype(tp) for tp in type_params)
+    return semtype
 
 
 def _oracle_compose_types(
