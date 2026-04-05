@@ -2,19 +2,13 @@ from .semtype import SemType, ULF_MAPS, semtype2str, str2semtype, _normalize_syn
 from .lisp_keys import make_lisp_lookup_key
 
 
-def compose_types(
+def _oracle_compose_types(
     opr_semtype: SemType | None,
     arg_semtype: SemType | None,
     ignore_synfeats: bool = True,
     opr_apply_fn_name: str = 'APPLY-OPERATOR!',
 ) -> SemType | None:
-    """Compose an operator semtype with an argument semtype.
-    
-    WARNING: This is a oracle-based implementation that looks up precomputed results
-    form ulf_maps.json. It only returns a result for operator/argument
-    combinations that were recorded by the Lisp ULF system. Unrecognized
-    combinations return None.
-    """
+    """Look up a precomputed composition result in the oracle data."""
     if opr_semtype is None or arg_semtype is None:
         return None
     opr_str = semtype2str(opr_semtype)
@@ -31,3 +25,18 @@ def compose_types(
     if composed_str is None:
         return None
     return str2semtype(composed_str)
+
+
+def compose_types(
+    opr_semtype: SemType | None,
+    arg_semtype: SemType | None,
+    ignore_synfeats: bool = True,
+    opr_apply_fn_name: str = "APPLY-OPERATOR!",
+) -> SemType | None:
+    """Compose an operator semtype with an argument semtype."""
+    return _oracle_compose_types(
+        opr_semtype,
+        arg_semtype,
+        ignore_synfeats,
+        opr_apply_fn_name,
+    )
