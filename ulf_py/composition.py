@@ -183,6 +183,27 @@ def compose_types(
     opr_apply_fn_name: str = "APPLY-OPERATOR!",
 ) -> SemType | None:
     """Compose an operator semtype with an argument semtype."""
+    if opr_semtype is None or arg_semtype is None:
+        return None
+    
+    if opr_apply_fn_name == "APPLY-OPERATOR!":
+        composed = apply_operator(
+            opr_semtype,
+            arg_semtype,
+            ignore_synfeats=ignore_synfeats,
+        )
+        if composed is not None:
+            return composed
+        
+        composed = apply_operator(
+            arg_semtype,
+            opr_semtype,
+            ignore_synfeats=ignore_synfeats,
+        )
+        
+        if composed is not None:
+            return composed
+        
     return _oracle_compose_types(
         opr_semtype,
         arg_semtype,
