@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .semtype import (
     AtomicType, SemType, OptionalType, 
     ULF_MAPS, _normalize_synfeats_order, _normalize_whitespace,
