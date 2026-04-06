@@ -388,7 +388,7 @@ class SemTypeParser:
             # specification rather than a full semtype.  It is preprocessed out
             # into ordinary >> types by process_out_synfeat_connective and will
             # not appear in system-generated semtypes.
-            new_synfeats = self._parse_out_synfeat_rhs()
+            new_synfeats = self._parse_synfeat_connector_rhs()
             self._expect(')')
             return _PendingOutSynfeat(
                 antecedent=domain,
@@ -400,7 +400,7 @@ class SemTypeParser:
         
         return SemType(connective=conn, domain=domain, range=range_)
     
-    def _parse_out_synfeat_rhs(self) -> SyntacticFeatures:
+    def _parse_synfeat_connector_rhs(self) -> SyntacticFeatures:
         """
         Parse RHS of `%>`, which is a bare syntactic-feature specification
         rather than a full semtype.
