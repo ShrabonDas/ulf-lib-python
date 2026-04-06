@@ -384,6 +384,10 @@ class SemTypeParser:
         conn = self._parse_connective()
         
         if conn == "%>":
+            # The %> connective is a shorthand whose RHS is a bare synfeat
+            # specification rather than a full semtype.  It is preprocessed out
+            # into ordinary >> types by process_out_synfeat_connective and will
+            # not appear in system-generated semtypes.
             new_synfeats = self._parse_out_synfeat_rhs()
             self._expect(')')
             return _PendingOutSynfeat(
