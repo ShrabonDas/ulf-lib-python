@@ -1,3 +1,28 @@
+"""
+Data structures for representing ULF semantic types.
+
+Connective semantics
+====================
+=>  Basic antecedent/consequent.
+    Underspecified synfeats in the antecedent allow anything;
+    underspecified synfeats in the consequent take the parent values.
+    Any restrictive feature must be spelled out explicitly in both positions.
+
+>>  Argument feature-preserving antecedent/consequent.
+    Underspecified synfeats in the consequent inherit the antecedent value.
+    Example: instead of {((S=>2)%!t=>(S=>2)%!t)|((S=>2)_t=>(S=>2)%t)} for
+    a tense-preserving sentence modifier, write ((S=>2)>>(S=>2)).
+
+%>  Synfeat-modification shorthand (retains semantic content, distributes
+    accordingly).  Always reducible to >> with synfeat changes applied before
+    and after distribution.  This shorthand is preprocessed out and will not
+    appear in system-generated semtypes.
+    See the tense entry (PRES|PAST|CF) in ttt-lexical-patterns for an example.
+
+!   Prefix on any feature value for negation, e.g. !t = not-tensed.
+
+# TODO: Make sure *h and *p can have duplicates, or have counts.
+"""
 from __future__ import annotations
 from dataclasses import dataclass, field
 from itertools import product
@@ -57,8 +82,10 @@ Connective = Literal['=>', '>>', "%>"]
 CONNECTIVES = Connective.__args__
 
 SEMTYPE_MAX_EXPONENT = 3
+# Maximum exponent for variable (^n) semtype expansion.
+# e.g. D^n => 2 can be generated as 2, (D=>2), (D=>(D=>2)), etc. up to this limit.
 # TODO: if this value becomes configurable at runtime, add a clear reload/update
-# path for any cached or precomputed dependent state so the change 
+# path for any cached or precomputed dependent state so the change
 # propagates consistently.
 
 # ==================================================
@@ -84,9 +111,9 @@ class SemType:
     domain: "SemType" | None = None
     range: "SemType" | None = None
     ex: int = 1
-    suffix: str | None = None
-    type_params: list['SemType'] = field(default_factory=list)
-    synfeats: SyntacticFeatures = field(default_factory=lambda: DEFAULT_SYNTACTIC_FEATURES.copy())
+    suffix: str | None = None  # only n, v, a, p
+    type_params: list['SemType'] = field(default_factory=list)  # internal type parameters, needed for some macros to carry over information
+    synfeats: SyntacticFeatures = field(default_factory=lambda: DEFAULT_SYNTACTIC_FEATURES.copy())  # miscellaneous ordered syntactic features
     
     
 @dataclass(slots=True)
@@ -105,18 +132,8 @@ class OptionalType(SemType):
     types: list[SemType | None] = field(default_factory=list)      # {A | B | C}
     
 
-# Mirrors Lisp lex-macro? / lex-macro-hole? from ttt-lexical-patterns.lisp.
-# Keep local for now because they are only used by extended semtype parsing.
-_EXTENDED_ATOMIC_TYPES = {
-    "QT-ATTR1",
-    "QT-ATTR2",
-    "SUB1",
-    "REP1",
-    "POSTGEN1",
-    "POSTGEN2",
-    "+PREDS",
-}
-
+# Lex macros — symbols seen directly in ULF expressions.
+# Mirrors Lisp lex-macro? from ttt-lexical-patterns.lisp.
 _LEX_MACROS = {
     "QT-ATTR",
     "SUB",
@@ -127,6 +144,8 @@ _LEX_MACROS = {
     "VOC-O"
 }
 
+# Lex macro holes — gap-filler slots inside macro expressions.
+# Mirrors Lisp lex-macro-hole? from ttt-lexical-patterns.lisp.
 _LEX_MACRO_HOLES = {
     "*H",
     "*P",
@@ -135,18 +154,39 @@ _LEX_MACRO_HOLES = {
     "*REF",
 }
 
-_EXTENDED_TOP_LEVEL_ATOMS = (
-    {"PARG", '"'}
+# Macro transition types — intermediate types used only in the type system to
+# mediate the different steps of macro-composition (not seen directly in ULF
+# expressions).
+# Keep local for now because they are only used by extended semtype parsing.
+_MACRO_TRANSITION_TYPES = {
+    "QT-ATTR1",
+    "QT-ATTR2",
+    "SUB1",
+    "REP1",
+    "POSTGEN1",
+    "POSTGEN2",
+    "+PREDS",
+}
+
+# All atomic types added by macro/extension parsing beyond the base set {D, S, 2}.
+# Replacing this set allows reuse of the same composition operators for a different
+# type system (e.g., full Episodic Logic with subtypes of D: events E, kinds K, etc.)
+_MACRO_EXTENSION_ATOMS = (
+    {
+        "PARG",   # p-arg type extension
+        '"',      # quote symbols
+    }
     | _LEX_MACROS
-    | _EXTENDED_ATOMIC_TYPES
     | _LEX_MACRO_HOLES
+    | _MACRO_TRANSITION_TYPES
 )
+
 
 
 @dataclass(slots=True)
 class _PendingOutSynfeat:
     """
-    Internal placeholder for a parsed `%>` expression before it is converted
+    Internal representation for a parsed `%>` expression before it is converted
     into ordinary `>>` semtypes.
     """
     antecedent: SemType | None
@@ -323,7 +363,20 @@ class SemTypeParser:
         if not token:
             raise self._error(f"Expected atom at pos {self.pos}")
         
-        return None if token.upper() == 'NIL' else AtomicType(name=token)
+        if token.upper() == 'NIL':
+            return None
+        
+        # Validate token against accepted types. Base types are D, S, 2.
+        # With allow_extended_atoms=True, macro extension atoms are also accepted.
+        # This is the extension point for supporting a different type system
+        # (e.g., full Episodic Logic with events E, kinds K, real numbers R, etc.).
+        _BASE_ATOMS = {"D", "S", "2"}
+        accepted = _BASE_ATOMS | _MACRO_EXTENSION_ATOMS if self.allow_extended_atoms else _BASE_ATOMS
+        if token not in accepted:
+            raise self._error(f"Unknown atom {token!r} at pos {self.pos - len(token)}")
+        
+        return AtomicType(name=token)
+
     
     def _parse_function_type(self) -> SemType | _PendingOutSynfeat:
         self._expect('(')
@@ -493,7 +546,13 @@ def copy_semtype(
     c_type_params=_UNSET,
     c_connective=_UNSET,
 ) -> SemType | None:
-    """Deep copy a SemType, optionally overriding specific fields (if c_* provided)."""
+    """Make a new semtype identical to the given type, optionally overriding specific fields.
+
+    Override keyword arguments (c_*) follow the sentinel pattern: if not
+    supplied, the source semtype's value is used.  This mirrors the Lisp
+    :null sentinel, where omitting a keyword means "keep the original".
+    Synfeats are always deep-copied to avoid shared mutable state.
+    """
     if st is None:
         return None
     
@@ -685,7 +744,8 @@ def unroll_exponent_step(st: SemType | None) -> SemType | None:
     if st is None:
         return None
     
-    # Top-level exponent > 1: A^4 -> (A => A^3)
+    # Top-level exponent > 1: A^4 -> (A => A^3).
+    # Move syntactic and type-param info to the domain and range.
     if st.ex > 1:
         new_domain = copy_semtype(st, c_ex=1)
         new_range = copy_semtype(st, c_ex=st.ex - 1)
@@ -695,8 +755,8 @@ def unroll_exponent_step(st: SemType | None) -> SemType | None:
             range=new_range,
         )
     
-    # Structured type whose domain exponent > 1
-    # (A^3 => B^2) -> (A => (A^2 => B^2))
+    # Domain exponent > 1: (A^3 => B^2) -> (A => (A^2 => B^2)).
+    # Retain all syntactic and type-param info at the top level; just move one argument out.
     if (
         not isinstance(st, AtomicType)
         and not isinstance(st, OptionalType)
@@ -724,33 +784,49 @@ def process_out_synfeat_connective(
     type_params: Sequence[SemType] | None = None,
 ) -> OptionalType | None:
     """
-    Process the `%>` shorthand.
-    
-    Lisp semantics:
-        A%>S => {a1>>a1%S | a2>>a2%S | ...}
-        
-    where a1, a2, ... are the flattened alternatives of A.
+    Process out the special synfeat connective ``%>``.
+
+    The ``%>`` shorthand assumes that the antecedent and consequent semantic
+    types match except for the explicit synfeat changes listed in the
+    consequent.  We convert ``A%>S`` into ``{a1>>a1%S | {a2>>a2%S | {...}}}``
+    for the flattened alternatives a1, a2, ... of A.  This ensures that after
+    applying this rule the semantic type stays the same even if the original
+    type had many alternatives — we do not want all antecedent alternatives
+    to be possible in the consequent for each antecedent alternative.
+
+    Steps:
+        1. Flatten out the options of the antecedent.
+        For each option:
+            2. Make a copy.
+            3. Overwrite the synfeats of the copy with the new synfeats.
+            4. Create the new type with the base as antecedent and copy as consequent.
+        Then:
+            5. Merge into a single optional type.
+            6. Binarize.
     """
+    # 1. Flatten out the options.
     flat_base = flatten_options(base_semtype)
     if flat_base is None:
         return None
-    
+
     copied_type_params = [copy_semtype(tp) for tp in (type_params or [])]
     new_types: list[SemType | None] = []
-    
+
     for st in flat_base.types:
         if st is None:
             continue
-        
+
+        # 2. Make a copy; 3. Overwrite synfeats with new synfeats.
         consequent = copy_semtype(
             st,
             c_synfeats=DEFAULT_SYNTACTIC_FEATURES.copy(),
         )
         if consequent is None:
             continue
-        
+
         consequent.synfeats.update_syntactic_features(new_synfeats)
         
+        # 4. Create new type with base as antecedent and copy as consequent.
         new_types.append(
             SemType(
                 connective=">>",
@@ -760,10 +836,11 @@ def process_out_synfeat_connective(
                 synfeats=DEFAULT_SYNTACTIC_FEATURES.copy()
             )
         )
-        
+
     if not new_types:
         return None
-    
+
+    # 5. Merge; 6. Binarize.
     return binarize_flat_options(new_optional_semtype(new_types))
         
         
@@ -771,9 +848,17 @@ def process_out_synfeat_connective(
 def str2semtype(s: str, *, extended: bool = False) -> SemType | None:
     """
     Parse a string into a SemType object using the recursive descent parser.
-    
-    When extended=True, also support the Lisp extended parse cases such as
-    PARG, ", explicit extended atoms, and macro-hole variables.
+
+    Strings must be of the form ``([domain][connective][range])`` or a single
+    atom, where domain and range are valid strings of the same form.
+    Suffixes are supported after ``_`` (e.g. ``_V``).
+    Comma-separated syntactic features are supported after ``%`` (e.g. ``%T,LEX``).
+    Exponents are supported after ``^`` (e.g. ``^2`` or ``^n``).
+    Exponents must occur after any suffixes and syntactic features.
+
+    When ``extended=True``, also accept the Lisp extended-parse cases: PARG,
+    quote symbols (``"``), lex macros (QT-ATTR, SUB, ...), macro-hole
+    variables (*H, *P, ...), and macro transition types (QT-ATTR1, SUB1, ...).
     """
     stripped = s.strip()
     if not stripped:
@@ -782,7 +867,7 @@ def str2semtype(s: str, *, extended: bool = False) -> SemType | None:
     if extended:
         upper = stripped.upper()
         
-        if upper in _EXTENDED_TOP_LEVEL_ATOMS:
+        if upper in _MACRO_EXTENSION_ATOMS:
             return AtomicType(name=upper)
         
         parsed = SemTypeParser(
@@ -797,7 +882,13 @@ def str2semtype(s: str, *, extended: bool = False) -> SemType | None:
     return expanded
 
 def new_optional_semtype(options: Sequence[SemType | None]) -> OptionalType:
-    """Create an optional type from a list of type options."""
+    """Create an optional semtype from a list of options.
+
+    Optional semtypes have no domain, range, exponent, suffix, type parameters,
+    or synfeats at the top level — these must all be propagated into the
+    individual options.  Externally, optional types may carry exponents, but
+    those are expanded out into option realizations during parsing.
+    """
     return OptionalType(types=list(options))
 
 def flatten_type_params(st: SemType) -> SemType | OptionalType:
@@ -836,16 +927,20 @@ def flatten_options(raw_st: SemType | None) -> OptionalType | None:
     there is only one option. Returns None when the flattened semtype is empty,
     for example for exponent 0.
     """
+    # Remove top-level exponent.
     st = unroll_exponent_step(raw_st)
     if st is None:
         return None
     
+    # Flatten type-params if present.
     if st.type_params:
         st = flatten_type_params(st)
         
+    # Concrete exponent=0 type, return nil.
     if st.ex == 0:
         return None
     
+    # Optional type: recurse on each option and flatten all into a single optional.
     if isinstance(st, OptionalType):
         new_options: list[SemType | None] = []
         for opt in st.types:
@@ -854,9 +949,12 @@ def flatten_options(raw_st: SemType | None) -> OptionalType | None:
                 new_options.extend(flat_opt.types)
         return new_optional_semtype(new_options) if new_options else None
     
+    # Atomic type: wrap a copy in a single-element optional.
     if isinstance(st, AtomicType):
         return new_optional_semtype([copy_semtype(st)])
         
+    # Non-atomic, non-optional: recurse into domain and range, then generate
+    # an optional of all (domain, range) combinations.
     flat_dom = flatten_options(st.domain)
     flat_ran = flatten_options(st.range)
     
@@ -892,6 +990,7 @@ def semtype_equal(s1: SemType | None, s2: SemType | None) -> bool:
         set1: Sequence[SemType | None],
         set2: Sequence[SemType | None],
     ) -> bool:
+        """Check equality of two semtype lists, ignoring order."""
         return (
             len(set1) == len(set2)
             and all(
@@ -901,6 +1000,7 @@ def semtype_equal(s1: SemType | None, s2: SemType | None) -> bool:
         )
     
     def same_metadata(t1: SemType, t2: SemType) -> bool:
+        """Check suffix, synfeats, and type-params equality between two semtypes."""
         return (
             t1.suffix == t2.suffix
             and t1.synfeats.equal(t2.synfeats)
@@ -911,43 +1011,50 @@ def semtype_equal(s1: SemType | None, s2: SemType | None) -> bool:
         raw_t1: SemType | None,
         raw_t2: SemType | None,
     ) -> bool:
+        """Check equality of two semtypes that contain no optional types."""
+        # Pull out exponents.
         t1 = unroll_exponent_step(raw_t1)
         t2 = unroll_exponent_step(raw_t2)
-        
+
         if t1 is None or t2 is None:
             return t1 is None and t2 is None
-        
+
         if isinstance(t1, OptionalType) or isinstance(t2, OptionalType):
             raise ValueError("no_option_equal does not allow OptionalType inputs")
-        
+
+        # Base cases. One of the arguments is atomic.
         t1_is_atomic = isinstance(t1, AtomicType)
         t2_is_atomic = isinstance(t2, AtomicType)
-        
+
         if t1_is_atomic != t2_is_atomic:
             return False
-        
+
+        # Atomic (only has domain).
         if t1_is_atomic:
             return (
                 t1.name == t2.name
                 and same_metadata(t1, t2)
             )
-        
+
+        # Non-atomic (has domain and range).
         return (
             no_option_equal(t1.domain, t2.domain)
             and no_option_equal(t1.range, t2.range)
             and t1.connective == t2.connective
             and same_metadata(t1, t2)
         )
-    
+
     def dedupe_flat_options(
         options: Sequence[SemType | None],
     ) -> list[SemType | None]:
+        """Remove duplicate options using semtype equality."""
         unique: list[SemType | None] = []
         for option in options:
             if not any(no_option_equal(option, existing) for existing in unique):
                 unique.append(option)
         return unique
-    
+
+    # Flatten both sides and deduplicate, then check set equality.
     if s1 is None or s2 is None:
         return s1 is None and s2 is None
     
@@ -961,10 +1068,16 @@ def semtype_equal(s1: SemType | None, s2: SemType | None) -> bool:
 
 def _synfeat_diff_for_right_arrow(st: SemType) -> tuple[SyntacticFeatures, SyntacticFeatures]:
     """
-    Keep only features that are specified on both domain and range and differ.
-    
+    Compute the synfeat difference between domain and range for a ``>>`` semtype.
+
+    Keeps only features that are specified on *both* domain and range and whose
+    values differ.  Features that agree or are only present on one side are
+    removed from both return values.
+
     Returns:
-        (domain_diff_feats, range_diff_feats)
+        A pair ``(domain_diff_feats, range_diff_feats)`` where:
+            1. domain synfeats where the range value is specified and differs.
+            2. range synfeats where the domain value is specified and differs.
     """
     domain_sf = (st.domain.synfeats if st.domain and st.domain.synfeats else SyntacticFeatures()).copy()
     range_sf = (st.range.synfeats if st.range and st.range.synfeats else SyntacticFeatures()).copy()
@@ -983,9 +1096,11 @@ def _right_arrow_synfeats_match(x_st: SemType, y_st: SemType) -> bool:
     """
     Return whether two ``>>`` SemTypes have the same explicit domain-to-range
     syntactic-feature change.
-    
-    This ignores the unchanged features and features not specified on both sides, and
-    compares only the differing feature sets extracted from each SemType.
+
+    If a synfeat switch is specified on one side, it must be specified on both,
+    because unspecified features under ``>>`` are propagated from the antecedent
+    and will never trigger a switch.  This function compares only the features
+    that differ between domain and range on each side, ignoring everything else.
     """
     x_domain_diff, x_range_diff = _synfeat_diff_for_right_arrow(x_st)
     y_domain_diff, y_range_diff = _synfeat_diff_for_right_arrow(y_st)
@@ -1033,15 +1148,17 @@ def semtype_match(
     if pattern is None or value is None:
         return pattern is None and value is None
     
+    # Expand out one level of exponents if relevant.
     x = pattern if ignore_exp else unroll_exponent_step(pattern)
     y = value if ignore_exp else unroll_exponent_step(value)
-    
+
     if x is None or y is None:
         return x is None and y is None
-    
+
+    # Now we can assume exponent = 1 for the domain and at the top level.
     rec_ignore_exp = 'r' if ignore_exp == 'r' else None
-    
-    # Optional matching: any compatible pair works
+
+    # One is optional: make option lists and see if any pair of options work.
     if isinstance(x, OptionalType) or isinstance(y, OptionalType):
         x_options = x.types if isinstance(x, OptionalType) else [x]
         y_options = y.types if isinstance(y, OptionalType) else [y]
