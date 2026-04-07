@@ -363,6 +363,8 @@ class SemTypeParser:
         if not token:
             raise self._error(f"Expected atom at pos {self.pos}")
         
+        # Accept NIL (case-insensitive) for compatibility with CL-based ULF
+        # code, which may produce NIL where Python uses None.
         if token.upper() == 'NIL':
             return None
         
@@ -937,7 +939,7 @@ def flatten_options(raw_st: SemType | None) -> OptionalType | None:
     if st.type_params:
         st = flatten_type_params(st)
         
-    # Concrete exponent=0 type, return nil.
+    # Concrete exponent=0 type, return None.
     if st.ex == 0:
         return None
     
