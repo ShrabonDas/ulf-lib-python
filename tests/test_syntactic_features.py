@@ -89,8 +89,8 @@ def test_combine_features() -> None:
             opr_st_str = case.get("opr_semtype")
             arg_st_str = case.get("arg_semtype")
 
-            opr_semtype = str2semtype(opr_st_str) if opr_st_str else None
-            arg_semtype = str2semtype(arg_st_str) if arg_st_str else None
+            opr_semtype = str2semtype(opr_st_str, extended=True) if opr_st_str else None
+            arg_semtype = str2semtype(arg_st_str, extended=True) if arg_st_str else None
 
             result = SyntacticFeatures.combine_features(
                 base_sf, opr_sf, arg_sf, csq_sf,
