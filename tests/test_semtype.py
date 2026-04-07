@@ -119,3 +119,22 @@ def test_basic_semtype_equal_positive(left: str, right: str) -> None:
 def test_basic_semtype_equal_negative(left: str, right: str) -> None:
     """Reject semtypes that differ by suffix or exact syntactic features."""
     assert not equal_str(left, right)
+
+
+# Tests for %> (synfeat connective) parsing and lowering.
+@pytest.mark.parametrize(
+    ("input_str", "expected_str"),
+    [
+        (
+            "((D=>(S=>2))%>T)",
+            "{((D=>(S=>2))>>(D=>(S=>2))%T)}",
+        ),
+        (
+            "({D|(D=>(S=>2))}%>T)",
+            "{(D>>D%T)|((D=>(S=>2))>>(D=>(S=>2))%T)}",
+        ),
+    ]
+)
+def test_synfeat_connective_lowering(input_str: str, expected_str: str) -> None:
+    """Lower %> into >> types matching the Lisp ground truth."""
+    assert equal_str(input_str, expected_str)
