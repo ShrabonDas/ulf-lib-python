@@ -18,6 +18,7 @@ def compose(
 
 def test_auxiliary_compose_matches_lisp_case() -> None:
     """AUX + verb yields a verb with the expected feature changes."""
+    # AUX + (D=>(S=>2))_V (no T, X) >> (D=>(S=>2))_V%X,!T
     result = compose(
         "((D=>(S=>2))_V%!T,!X>>(D=>(S=>2))_V%!T,X)",
         "(D=>(S=>2))_V",
@@ -30,6 +31,8 @@ def test_auxiliary_compose_matches_lisp_case() -> None:
     
 def test_tensed_auxiliary_compose_matches_lisp_case() -> None:
     """TAUX + untensed auxiliary verb yields a tensed auxiliary verb."""
+    # TENSE + AUX => TAUX
+    # TAUX + (D=>(S=>2))_V (no T, X) >> (D=>(S=>2))_V%T,X
     result = compose(
         "((D=>(S=>2))_V%!T,!X>>(D=>(S=>2))_V%T,X)",
         "(D=>(S=>2))_V%!T,!X",

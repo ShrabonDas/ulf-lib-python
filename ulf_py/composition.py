@@ -17,7 +17,13 @@ def _first_pos_suffix(suffix: str | None) -> str | None:
 
 
 def merge_suffixes(opr: SemType, arg: SemType) -> str | None:
-    """Compute the result suffix for core composition."""
+    """Compute the suffix for the result of running operator `opr` on `arg`.
+
+    The range suffix of `opr` is preferred. If that is unspecified, use the
+    argument suffix, or the domain suffix if the argument suffix is unspecified,
+    for the `>>` connective. Use the whole operator suffix for the `=>`
+    connective.
+    """
     range_suffix = _first_pos_suffix(opr.range.suffix if opr.range is not None else None)
     domain_suffix = _first_pos_suffix(opr.domain.suffix if opr.domain is not None else None)
     arg_suffix = _first_pos_suffix(arg.suffix)
@@ -48,9 +54,14 @@ def _add_semtype_type_params(
 
 
 def compose_synfeats(opr: SemType, arg: SemType):
-    """Compose operator and argument syntactic features."""
+    """Compose the synfeats of the operator and argument semtypes.
+
+    Returns the new synfeats value.
+    """
     from .syntactic_features import DEFAULT_SYNTACTIC_FEATURES, SyntacticFeatures
-    
+
+    # 1. Get the base synfeats based on the operator connective.
+    # 2. Let the syntactic-features logic update individual features.
     if opr.connective == "=>":
         base_synfeats = opr.synfeats.copy()
     elif opr.connective == ">>":
@@ -84,7 +95,13 @@ def apply_operator(
     recurse_fn=None,
     ignore_synfeats: bool = False,
 ) -> SemType | None:
-    """Apply an operator semtype to an argument semtype."""
+    """Compose a given operator and argument semtype if possible.
+
+    Assumption for now: the argument has no exponent. If it does, it is
+    ignored. Suffixes are propagated from `opr`. Synfeats are propagated from
+    `opr` if `=>` and from `arg` if `>>`, with per-feature exceptions.
+    Type parameters are propagated from both.
+    """
     if raw_opr is None or raw_arg is None:
         return None
     
@@ -98,12 +115,14 @@ def apply_operator(
     
     opr = unroll_exponent_step(raw_opr)
     arg = unroll_exponent_step(raw_arg)
+    # We can now assume all domain and top-level exponents are 1.
     if opr is None or arg is None:
         return None
     
     result: SemType | None = None
-    
+
     if isinstance(opr, OptionalType):
+        # Operator is an optional type.
         results = [
             recurse_fn(opt, arg, recurse_fn=recurse_fn, ignore_synfeats=ignore_synfeats)
             for opt in opr.types
@@ -117,6 +136,7 @@ def apply_operator(
         else:
             result = OptionalType(types=present)
     elif isinstance(arg, OptionalType):
+        # Argument is an optional type.
         results = [
             recurse_fn(opr, opt, recurse_fn=recurse_fn, ignore_synfeats=ignore_synfeats)
             for opt in arg.types
@@ -130,6 +150,7 @@ def apply_operator(
         else:
             result = OptionalType(types=present)
     elif isinstance(opr, AtomicType):
+        # Operator is a non-optional atomic type of the form A^n with n > 1.
         if semtype_match(opr, arg) and opr.ex > 1:
             result = copy_semtype(opr, c_ex=opr.ex - 1)
     elif (
@@ -137,13 +158,20 @@ def apply_operator(
         and opr.domain is not None
         and opr.domain.ex == 1
     ):
+        # Operator is a non-atomic type with domain exponent n = 1.
         result = copy_semtype(opr.range)
         if result is not None:
+            # Only add a suffix when the result is not atomic. This is retained
+            # for sentences so we can recognize whether the sentence is
+            # grammatical, for example whether the top predicate is a verb.
             if not isinstance(result, AtomicType):
                 result.suffix = merge_suffixes(opr, arg)
+            # Update syntactic features.
             if not ignore_synfeats:
                 result.synfeats = compose_synfeats(opr, arg)
-                
+
+    # Update type params before returning, if not optional. All type params are
+    # assumed to live in non-optional types.
     if not isinstance(opr, OptionalType) and result is not None:
         _add_semtype_type_params(result, new_params)
         
@@ -156,7 +184,7 @@ def compose_types(
     ignore_synfeats: bool = True,
     opr_apply_fn_name: str = "APPLY-OPERATOR!",
 ) -> SemType | None:
-    """Compose an operator semtype with an argument semtype."""
+    """Compose two types if possible and return the composed type."""
     if opr_semtype is None or arg_semtype is None:
         return None
     
