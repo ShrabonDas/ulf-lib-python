@@ -825,9 +825,6 @@ def process_out_synfeat_connective(
             st,
             c_synfeats=DEFAULT_SYNTACTIC_FEATURES.copy(),
         )
-        if consequent is None:
-            continue
-
         consequent.synfeats.update_syntactic_features(new_synfeats)
         
         # 4. Create new type with base as antecedent and copy as consequent.
