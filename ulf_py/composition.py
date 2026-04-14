@@ -6,12 +6,15 @@ from .semtype import (
 )
 
 
+VALID_NON_ATOMIC_TYPE_SUFFIXES = "NAVP"
+
+
 def _first_pos_suffix(suffix: str | None) -> str | None:
     """Return the first recognized part-of-speech suffix character."""
     if suffix is None:
         return None
     for char in suffix.upper():
-        if char in "NAVP":
+        if char in VALID_NON_ATOMIC_TYPE_SUFFIXES:
             return char
     return None
 
