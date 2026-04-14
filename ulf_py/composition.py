@@ -96,11 +96,11 @@ def apply_operator(
     ignore_synfeats: bool = False,
 ) -> SemType | None:
     """Compose a given operator and argument semtype if possible.
-
-    Assumption for now: the argument has no exponent. If it does, it is
-    ignored. Suffixes are propagated from `opr`. Synfeats are propagated from
-    `opr` if `=>` and from `arg` if `>>`, with per-feature exceptions.
-    Type parameters are propagated from both.
+    
+    Both operator and argument are first normalized with `unroll_exponent_step`, 
+    so exponent structure may affect composition. Suffixes are propagated from `opr`.
+    Synfeats are propagated from `opr` if `=>` and from `arg` if `>>`, with per-feature
+    exceptions. Type parameters are propagated from both.
     """
     if raw_opr is None or raw_arg is None:
         return None
