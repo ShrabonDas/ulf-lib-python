@@ -8,7 +8,7 @@ def compose_semtype_strings(
     *,
     ignore_synfeats: bool = False,
 ):
-    """Compose two semtype strings via compose_types."""
+    """Compose two semtype strings via compose_types. Synfeats is ignored by default to simplify testing."""
     return compose_types(
         str2semtype(opr),
         str2semtype(arg),
