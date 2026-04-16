@@ -108,9 +108,9 @@ def apply_operator(
     if raw_opr is None or raw_arg is None:
         return None
     
-    # Use None as a sentinel because Python evaluates default arguments before
-    # apply_operator is bound, so recurse_fn cannot default to apply_operator
-    # in the function signature.
+    # None means use the default recursion through apply_operator. We use a sentinel
+    # because Python evaluates default arguments before apply_operator is bound, so
+    # recurse_fn cannot default to apply_operator in the function signature.
     if recurse_fn is None:
         recurse_fn = apply_operator
         
