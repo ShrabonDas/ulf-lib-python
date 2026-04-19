@@ -113,11 +113,6 @@ def apply_operator(
     # recurse_fn cannot default to apply_operator in the function signature.
     if recurse_fn is None:
         recurse_fn = apply_operator
-        
-    new_params = [
-        copy_semtype(tp)
-        for tp in list(raw_opr.type_params) + list(raw_arg.type_params)
-    ]
     
     opr = unroll_exponent_step(raw_opr)
     arg = unroll_exponent_step(raw_arg)
@@ -179,7 +174,10 @@ def apply_operator(
     # Update type params before returning, if not optional. All type params are
     # assumed to live in non-optional types.
     if not isinstance(opr, OptionalType) and result is not None:
-        _add_semtype_type_params(result, new_params)
+        _add_semtype_type_params(
+            result,
+            list(raw_opr.type_params) + list(raw_arg.type_params),
+        )
         
     return result
 
