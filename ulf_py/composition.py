@@ -114,11 +114,9 @@ def apply_operator(
     if recurse_fn is None:
         recurse_fn = apply_operator
     
+    # We can now assume all domain and top-level exponents are 1.
     opr = unroll_exponent_step(raw_opr)
     arg = unroll_exponent_step(raw_arg)
-    # We can now assume all domain and top-level exponents are 1.
-    if opr is None or arg is None:
-        return None
     
     result: SemType | None = None
 
