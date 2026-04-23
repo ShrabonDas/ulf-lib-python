@@ -1,9 +1,17 @@
 from __future__ import annotations
+from dataclasses import dataclass
 
 from .semtype import (
     AtomicType, SemType, OptionalType, 
     copy_semtype, semtype_match, unroll_exponent_step,
 )
+
+
+@dataclass(frozen=True)
+class CompositionResult:
+    semtype: SemType | None
+    direction: str              # "left", "right", or "none"
+    operands: list
 
 
 VALID_NON_ATOMIC_TYPE_SUFFIXES = "NAVP"
@@ -184,10 +192,10 @@ def compose_types(
     arg_semtype: SemType | None,
     ignore_synfeats: bool = True,
     opr_apply_fn_name: str = "APPLY-OPERATOR",
-) -> SemType | None:
+) -> CompositionResult:
     """Compose two types if possible and return the composed type."""
     if opr_semtype is None or arg_semtype is None:
-        return None
+        return CompositionResult(None, "none", [])
     
     if opr_apply_fn_name == "APPLY-OPERATOR":
         composed = apply_operator(
@@ -196,7 +204,7 @@ def compose_types(
             ignore_synfeats=ignore_synfeats,
         )
         if composed is not None:
-            return composed
+            return CompositionResult(composed, "right", [opr_semtype, arg_semtype])
         
         composed = apply_operator(
             arg_semtype,
@@ -205,4 +213,6 @@ def compose_types(
         )
         
         if composed is not None:
-            return composed
+            return CompositionResult(composed, "left", [arg_semtype, opr_semtype])
+        
+    return CompositionResult(None, "none", [])

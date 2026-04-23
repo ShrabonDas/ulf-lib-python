@@ -13,7 +13,7 @@ def compose_semtype_strings(
         str2semtype(opr),
         str2semtype(arg),
         ignore_synfeats=ignore_synfeats,
-    )
+    ).semtype
 
 
 def test_auxiliary_compose_matches_lisp_case() -> None:
