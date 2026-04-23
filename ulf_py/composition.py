@@ -154,7 +154,6 @@ def apply_operator(
             result = copy_semtype(opr, c_ex=opr.ex - 1)
     elif (
         semtype_match(opr.domain, arg)
-        and opr.domain is not None
         and opr.domain.ex == 1
     ):
         # Operator is a non-atomic type with domain exponent n = 1.
