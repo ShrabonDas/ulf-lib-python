@@ -183,13 +183,13 @@ def compose_types(
     opr_semtype: SemType | None,
     arg_semtype: SemType | None,
     ignore_synfeats: bool = True,
-    opr_apply_fn_name: str = "APPLY-OPERATOR!",
+    opr_apply_fn_name: str = "APPLY-OPERATOR",
 ) -> SemType | None:
     """Compose two types if possible and return the composed type."""
     if opr_semtype is None or arg_semtype is None:
         return None
     
-    if opr_apply_fn_name == "APPLY-OPERATOR!":
+    if opr_apply_fn_name == "APPLY-OPERATOR":
         composed = apply_operator(
             opr_semtype,
             arg_semtype,
