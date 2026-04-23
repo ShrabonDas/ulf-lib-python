@@ -112,7 +112,7 @@ def apply_operator(
     # because Python evaluates default arguments before apply_operator is bound, so
     # recurse_fn cannot default to apply_operator in the function signature.
     if recurse_fn is None:
-        recurse_fn = apply_operator
+        recurse_fn = lambda opr, arg: apply_operator(opr, arg, recurse_fn=recurse_fn, ignore_synfeats=ignore_synfeats)
     
     # We can now assume all domain and top-level exponents are 1.
     opr = unroll_exponent_step(raw_opr)
@@ -123,7 +123,7 @@ def apply_operator(
     if isinstance(opr, OptionalType):
         # Operator is an optional type.
         results = [
-            recurse_fn(opt, arg, recurse_fn=recurse_fn, ignore_synfeats=ignore_synfeats)
+            recurse_fn(opt, arg)
             for opt in opr.types
         ]
         present = [res for res in results if res is not None]
@@ -137,7 +137,7 @@ def apply_operator(
     elif isinstance(arg, OptionalType):
         # Argument is an optional type.
         results = [
-            recurse_fn(opr, opt, recurse_fn=recurse_fn, ignore_synfeats=ignore_synfeats)
+            recurse_fn(opr, opt)
             for opt in arg.types
         ]
         present = [res for res in results if res is not None]
