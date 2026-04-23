@@ -29,54 +29,9 @@ from itertools import product
 from typing import Literal, Any, Sequence
 from .syntactic_features import SyntacticFeatures, DEFAULT_SYNTACTIC_FEATURES, lookup_feature_name
 from .feature_definition_declarations import FEATURE_DEFINITIONS_DICT
-import json
 import re
 import string
 
-
-def _normalize_whitespace(s: str) -> str:
-    """Collapse all whitespace sequences to a single space."""
-    return re.sub(r'\s+', ' ', s)
-
-
-def _normalize_synfeats_order(s: str) -> str:
-    """Sort syntactic feature values alphabetically appearing in the string after `%`"""
-    def _sort_match(m):
-        vals = m.group(1).split(',')
-        return '%' + ','.join(sorted(vals))
-    return re.sub(r'%([A-Z!][A-Z0-9!,]*)', _sort_match, s)
-
-
-# Oracle data file: ulf_maps.json
-# Precomputed semtype maps exported from the Common Lisp ULF system.
-# Contains lookup tables for str2semtype, compose_types, and semtype_match
-# This file is not in the repo - download it via `bash_setup_data.sh`
-# (hosted as Github release asset under tag v0.1.0).`
-with open("ulf_maps.json") as file:
-    ULF_MAPS: dict[str, dict[str, Any]] | None = json.load(file)
-    # str2semtype: add output-string keys
-    extra = {}
-    for k, v in ULF_MAPS['str2semtype'].items():
-        if isinstance(v, dict) and 'string' in v and v['string'] != k:
-            extra[v['string']] = v
-    ULF_MAPS['str2semtype'].update(extra)
-    # str2semtype: also add normalized keys
-    normalized_extra = {}
-    for k, v in ULF_MAPS['str2semtype'].items():
-        nk = _normalize_synfeats_order(k)
-        if nk != k and nk not in ULF_MAPS['str2semtype']:
-            normalized_extra[nk] = v
-    ULF_MAPS['str2semtype'].update(normalized_extra)
-    # compose_types: normalize synfeat order and whitespace in keys
-    ULF_MAPS['compose_types'] = {
-        _normalize_whitespace(_normalize_synfeats_order(k)): v
-        for k, v in ULF_MAPS['compose_types'].items()
-    }
-    # semtype_match: normalize synfeat order and whitespace in keys
-    ULF_MAPS['semtype_match'] = {
-        _normalize_whitespace(_normalize_synfeats_order(k)): v
-        for k, v in ULF_MAPS['semtype_match'].items()
-    }
     
 Connective = Literal['=>', '>>', "%>"] 
 CONNECTIVES = Connective.__args__

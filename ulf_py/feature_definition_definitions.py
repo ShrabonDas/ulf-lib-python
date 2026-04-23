@@ -32,7 +32,7 @@ def base_result_pattern_combinator_generator(result_pattern: SemType) -> Combina
         if base is None:
             return None
         
-        res_semtype = compose_types(opr_semtype, arg_semtype, ignore_synfeats=True)
+        res_semtype = compose_types(opr_semtype, arg_semtype, ignore_synfeats=True).semtype
         if res_semtype is None:
             return None
         
