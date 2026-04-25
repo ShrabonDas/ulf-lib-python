@@ -121,6 +121,9 @@ _MACRO_TRANSITION_TYPES = {
     "POSTGEN1",
     "POSTGEN2",
     "+PREDS",
+    "PARG1",
+    "N+",
+    "NP+",
 }
 
 # All atomic types added by macro/extension parsing beyond the base set {D, S, 2}.
@@ -253,7 +256,7 @@ class SemTypeParser:
     """
     
     ATOM_CHARS = set(string.ascii_letters + string.digits + '+*-')
-    FEAT_STOP = set(',|})^_[]=>(')
+    FEAT_STOP = set(',|})^_[]=>(%')
     
     def __init__(self, s: str, *, allow_extended_atoms: bool = False):
         self.s = s
@@ -765,8 +768,9 @@ def process_out_synfeat_connective(
             5. Merge into a single optional type.
             6. Binarize.
     """
-    # 1. Flatten out the options.
-    flat_base = flatten_options(base_semtype)
+    # 1. Expand ^n exponents, then flatten out the options.
+    expanded_base = expand_variable_exponents(base_semtype)
+    flat_base = flatten_options(expanded_base)
     if flat_base is None:
         return None
 
@@ -1127,8 +1131,8 @@ def semtype_match(
                     return True
         return False
     
-    # Suffixes: only constrain when both are specified
-    if x.suffix is not None and y.suffix is not None and x.suffix != y.suffix:
+    # Suffixes: only constrain when both are specified (case-insensitive)
+    if x.suffix is not None and y.suffix is not None and x.suffix.upper() != y.suffix.upper():
         return False
     
     x_sf = x.synfeats if x.synfeats is not None else SyntacticFeatures()
