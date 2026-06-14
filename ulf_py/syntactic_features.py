@@ -104,6 +104,31 @@ class SyntacticFeatures:
         return self.update_feature_map(new.feature_map.items())
 
     @staticmethod
+    def feature_map_union(
+        a: "SyntacticFeatures",
+        b: "SyntacticFeatures",
+    ) -> "SyntacticFeatures":
+        """Return a new SyntacticFeatures with features from both a and b.
+
+        a's values take priority for keys present in both.
+        """
+        merged = dict(b.feature_map)
+        merged.update(a.feature_map)
+        return SyntacticFeatures(feature_map=merged)
+
+    @staticmethod
+    def feature_map_difference(
+        a: "SyntacticFeatures",
+        b: "SyntacticFeatures",
+    ) -> "SyntacticFeatures":
+        """Return features from a that are not set (None) in b."""
+        diff = {
+            k: v for k, v in a.feature_map.items()
+            if b.feature_map.get(k) is None
+        }
+        return SyntacticFeatures(feature_map=diff)
+
+    @staticmethod
     def combine_features(
         base: "SyntacticFeatures",
         opr_feats: "SyntacticFeatures",
@@ -134,24 +159,5 @@ class SyntacticFeatures:
         base.update_feature_map(csq_specified)
 
         return base
-
-    @staticmethod
-    def feature_map_difference(base_feats: "SyntacticFeatures", diff_feats: "SyntacticFeatures") -> "SyntacticFeatures":
-        result = base_feats.copy()
-        for k in diff_feats.feature_map.keys():
-            kk = _norm_name(k)
-            if kk in result.feature_map:
-                result.feature_map[kk] = None
-        return result
-
-    @staticmethod
-    def feature_map_union(one_feats: "SyntacticFeatures", two_feats: "SyntacticFeatures") -> "SyntacticFeatures":
-        result = one_feats.copy()
-        for k, v in two_feats.feature_map.items():
-            kk = _norm_name(k)
-            if kk not in result.feature_map or result.feature_map[kk] is None:
-                result.feature_map[kk] = v
-        return result
-
 
 DEFAULT_SYNTACTIC_FEATURES = SyntacticFeatures(feature_map={})

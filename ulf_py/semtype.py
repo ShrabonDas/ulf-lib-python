@@ -26,10 +26,9 @@ Connective semantics
 from __future__ import annotations
 from dataclasses import dataclass, field
 from itertools import product
-from typing import Literal, Any, Sequence
+from typing import Literal, Sequence
 from .syntactic_features import SyntacticFeatures, DEFAULT_SYNTACTIC_FEATURES, lookup_feature_name
 from .feature_definition_declarations import FEATURE_DEFINITIONS_DICT
-import re
 import string
 
     
@@ -37,11 +36,6 @@ Connective = Literal['=>', '>>', "%>"]
 CONNECTIVES = Connective.__args__
 
 SEMTYPE_MAX_EXPONENT = 3
-# Maximum exponent for variable (^n) semtype expansion.
-# e.g. D^n => 2 can be generated as 2, (D=>2), (D=>(D=>2)), etc. up to this limit.
-# TODO: if this value becomes configurable at runtime, add a clear reload/update
-# path for any cached or precomputed dependent state so the change
-# propagates consistently.
 
 # ==================================================
 # Data Classes
@@ -121,6 +115,9 @@ _MACRO_TRANSITION_TYPES = {
     "POSTGEN1",
     "POSTGEN2",
     "+PREDS",
+    "PARG1",
+    "N+",
+    "NP+",
 }
 
 # All atomic types added by macro/extension parsing beyond the base set {D, S, 2}.
@@ -153,19 +150,19 @@ class _PendingOutSynfeat:
 # semtype2str - reconstruct the string from a SemType tree
 # ==================================================
 
+_SYNFEATS_ORDER: dict[str, int] = {name: i for i, name in enumerate(FEATURE_DEFINITIONS_DICT)}
+
 def _synfeats_str(sf: SyntacticFeatures | None) -> str:
     if sf is None or not sf.feature_map:
         return ""
-    
-    order = {name: i for i, name in enumerate(FEATURE_DEFINITIONS_DICT)}
-    
+
     vals = []
-    for feat_name, feat_val in sorted(sf.feature_map.items(),
-                                      key=lambda x: order.get(x[0], 999)):
+    for _, feat_val in sorted(sf.feature_map.items(),
+                               key=lambda x: _SYNFEATS_ORDER.get(x[0], 999)):
         if feat_val is None:
             continue
         vals.append(feat_val.upper())
-        
+
     if not vals:
         return ""
     return "%" + ",".join(vals)
@@ -253,7 +250,7 @@ class SemTypeParser:
     """
     
     ATOM_CHARS = set(string.ascii_letters + string.digits + '+*-')
-    FEAT_STOP = set(',|})^_[]=>(')
+    FEAT_STOP = set(',|})^_[]=>(%')
     
     def __init__(self, s: str, *, allow_extended_atoms: bool = False):
         self.s = s
@@ -765,8 +762,9 @@ def process_out_synfeat_connective(
             5. Merge into a single optional type.
             6. Binarize.
     """
-    # 1. Flatten out the options.
-    flat_base = flatten_options(base_semtype)
+    # 1. Expand ^n exponents, then flatten out the options.
+    expanded_base = expand_variable_exponents(base_semtype)
+    flat_base = flatten_options(expanded_base)
     if flat_base is None:
         return None
 
@@ -799,7 +797,7 @@ def process_out_synfeat_connective(
         return None
 
     # 5. Merge; 6. Binarize.
-    return binarize_flat_options(new_optional_semtype(new_types))
+    return _binarize_options(new_types)
         
         
 
@@ -1127,8 +1125,8 @@ def semtype_match(
                     return True
         return False
     
-    # Suffixes: only constrain when both are specified
-    if x.suffix is not None and y.suffix is not None and x.suffix != y.suffix:
+    # Suffixes: only constrain when both are specified (case-insensitive)
+    if x.suffix is not None and y.suffix is not None and x.suffix.upper() != y.suffix.upper():
         return False
     
     x_sf = x.synfeats if x.synfeats is not None else SyntacticFeatures()
